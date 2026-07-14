@@ -7,6 +7,7 @@ import { SessionInfo } from '../models/Types';
 import { canResumeSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
 import { Icon } from '../common/Icon';
+import { loadDraftRaw, saveDraftRaw, clearDraft } from '../common/Draft';
 
 /// New-session sheet + resume composer — the native port of
 /// mobile-web/src/views/Composer.tsx. NewSessionSheet spawns a fresh headless
@@ -14,16 +15,94 @@ import { Icon } from '../common/Icon';
 /// still recoverable via the next snapshot); ResumeComposer continues an existing
 /// Fleet-owned session (`resume_session`, empty prompt = "continue").
 ///
+/// Draft persistence (feature-gaps P2): the new-session form's workspace + prompt +
+/// model/effort/permission survive an accidental sheet close / tab switch / process
+/// kill via PersistentStorage (see common/Draft.ets), restored on reopen and cleared
+/// on a successful spawn — mirrors mobile-web's useDraft("new-session", …).
+///
 /// Deferred vs. web (device-only, land in P8 device validation): file attachments
-/// (needs the on-device file picker → `upload_attachment`), and localStorage-style
-/// draft persistence across sheet close. The essential workspace + prompt +
-/// model/effort/permission → spawn flow is fully wired here.
+/// (needs the on-device file picker → `upload_attachment`). The essential workspace +
+/// prompt + model/effort/permission → spawn flow is fully wired here.
 ///
 /// ArkTS shape notes: relay params are declared interfaces (never Record
 /// literals); @Builder bodies hold only UI syntax; Select options are
 /// SelectOption[]; private member names avoid CustomComponent-reserved attr names.
 
 const CUSTOM_KEY = '__custom__';
+
+// ── 新会话表单草稿 ────────────────────────────────────────────────────────────
+// 全局唯一 key(同时只有一个新会话 sheet)。持久化 workspace + prompt +
+// model/effort/permission,重开原样恢复,只有 spawn 成功才清空。附件不入草稿——
+// 那属真机档期,且是已上传到 relay 的产物,重开重挑即可。对齐 mobile-web
+// NEW_SESSION_DRAFT_KEY / NEW_SESSION_DEFAULT。
+const NEW_SESSION_DRAFT_KEY = 'new-session';
+
+interface NewSessionDraft {
+  workspace: string;
+  customWorkspace: string;
+  prompt: string;
+  model: string;
+  effort: string;
+  permissionMode: string;
+}
+
+/// JSON.parse 的落点:各字段声明为可选,老草稿缺字段时读出 undefined 而非报错,
+/// 由 loadNewSessionDraft 逐字段回退到默认值(浅合并)。
+interface NewSessionDraftRaw {
+  workspace?: string;
+  customWorkspace?: string;
+  prompt?: string;
+  model?: string;
+  effort?: string;
+  permissionMode?: string;
+}
+
+function defaultNewSessionDraft(): NewSessionDraft {
+  // acceptEdits 默认:headless -p 会话在 default 模式下无法批准文件编辑
+  // (与桌面启动器同默认)。
+  return {
+    workspace: '',
+    customWorkspace: '',
+    prompt: '',
+    model: '',
+    effort: '',
+    permissionMode: 'acceptEdits',
+  };
+}
+
+/// 读草稿并与默认值浅合并:后续给表单加字段时,旧草稿缺的字段自动取新默认值,
+/// 不会读出 undefined。无草稿 / 解析失败 → 全默认。
+function loadNewSessionDraft(): NewSessionDraft {
+  const d = defaultNewSessionDraft();
+  const raw = loadDraftRaw(NEW_SESSION_DRAFT_KEY);
+  if (raw === null) {
+    return d;
+  }
+  try {
+    const p = JSON.parse(raw) as NewSessionDraftRaw;
+    if (typeof p.workspace === 'string') {
+      d.workspace = p.workspace;
+    }
+    if (typeof p.customWorkspace === 'string') {
+      d.customWorkspace = p.customWorkspace;
+    }
+    if (typeof p.prompt === 'string') {
+      d.prompt = p.prompt;
+    }
+    if (typeof p.model === 'string') {
+      d.model = p.model;
+    }
+    if (typeof p.effort === 'string') {
+      d.effort = p.effort;
+    }
+    if (typeof p.permissionMode === 'string') {
+      d.permissionMode = p.permissionMode;
+    }
+  } catch (_e) {
+    return defaultNewSessionDraft();
+  }
+  return d;
+}
 
 interface Choice {
   value: string;
@@ -182,7 +261,32 @@ export struct NewSessionSheet {
     return themeTokens(this.resolvedTheme);
   }
 
+  /// Snapshot the current form state to the persisted draft. Called after every
+  /// field edit so a mid-input sheet close / process kill loses nothing.
+  private saveDraftNow(): void {
+    const d: NewSessionDraft = {
+      workspace: this.workspaceKey,
+      customWorkspace: this.customWorkspace,
+      prompt: this.prompt,
+      model: this.model,
+      effort: this.effort,
+      permissionMode: this.permissionMode,
+    };
+    saveDraftRaw(NEW_SESSION_DRAFT_KEY, JSON.stringify(d));
+  }
+
   aboutToAppear(): void {
+    // Restore the in-progress draft before anything else, so the form paints
+    // with the user's last input. `effectiveKey()` reconciles a stale workspace
+    // against the live recents list, so a vanished workspace just falls back.
+    const d = loadNewSessionDraft();
+    this.workspaceKey = d.workspace;
+    this.customWorkspace = d.customWorkspace;
+    this.prompt = d.prompt;
+    this.model = d.model;
+    this.effort = d.effort;
+    this.permissionMode = d.permissionMode;
+
     const client = this.client;
     if (client) {
       client.request<ChatWorkspaceResp>('chat_workspace')
@@ -292,6 +396,7 @@ export struct NewSessionSheet {
     client.request<Object>('spawn_session', params)
       .then(() => {
         this.busy = false;
+        clearDraft(NEW_SESSION_DRAFT_KEY);
         this.onClose();
       })
       .catch((e: Object) => {
@@ -342,6 +447,7 @@ export struct NewSessionSheet {
           .width('100%')
           .onSelect((i: number) => {
             this.workspaceKey = this.workspaceChoices()[i].value;
+            this.saveDraftNow();
           })
 
         // Custom path row
@@ -356,6 +462,7 @@ export struct NewSessionSheet {
               .borderRadius(8)
               .onChange((v: string) => {
                 this.customWorkspace = v;
+                this.saveDraftNow();
               })
             Button(t('浏览…'))
               .fontSize(13)
@@ -380,6 +487,7 @@ export struct NewSessionSheet {
           .borderRadius(8)
           .onChange((v: string) => {
             this.prompt = v;
+            this.saveDraftNow();
           })
 
         OptionSelects({
@@ -389,12 +497,15 @@ export struct NewSessionSheet {
           permissionDefaultLabel: '默认权限',
           onModel: (v: string) => {
             this.model = v;
+            this.saveDraftNow();
           },
           onEffort: (v: string) => {
             this.effort = v;
+            this.saveDraftNow();
           },
           onPermission: (v: string) => {
             this.permissionMode = v;
+            this.saveDraftNow();
           },
         })
 
@@ -423,6 +534,7 @@ export struct NewSessionSheet {
         onPick: (path: string) => {
           this.customWorkspace = path;
           this.picking = false;
+          this.saveDraftNow();
         },
         onClose: () => {
           this.picking = false;
