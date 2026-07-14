@@ -15,6 +15,7 @@ import { t } from '../common/I18n';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
 import { EmptyState } from './EmptyState';
+import { Icon } from '../common/Icon';
 import {
   SessionInfo,
   DecisionHistoryRecord,
@@ -399,7 +400,7 @@ export struct DecisionHistoryTab {
     } else if (this.state === 'error') {
       TabHint({ text: t('加载失败（桌面端可能离线）') })
     } else if (this.records.length === 0) {
-      EmptyState({ compact: true, icon: '✅', title: t('该会话没有决策记录') })
+      EmptyState({ compact: true, iconRes: $r('app.media.ic_circle_check_big'), title: t('该会话没有决策记录') })
     } else {
       Scroll() {
         Column({ space: 8 }) {
@@ -500,7 +501,7 @@ export struct TaskPlansTab {
     } else if (this.state === 'error') {
       TabHint({ text: t('加载失败（桌面端可能离线）') })
     } else if (this.plans.length === 0) {
-      EmptyState({ compact: true, icon: '📋', title: t('该会话没有 TASKS.md 计划') })
+      EmptyState({ compact: true, iconRes: $r('app.media.ic_list_todo'), title: t('该会话没有 TASKS.md 计划') })
     } else {
       Scroll() {
         Column({ space: 8 }) {
@@ -741,7 +742,7 @@ export struct WorkflowTab {
     } else if (this.state === 'error') {
       TabHint({ text: t('加载失败（桌面端可能离线）') })
     } else if (this.trees.length === 0) {
-      EmptyState({ compact: true, icon: '🔀', title: t('该会话没有 workflow 运行') })
+      EmptyState({ compact: true, iconRes: $r('app.media.ic_workflow'), title: t('该会话没有 workflow 运行') })
     } else {
       Scroll() {
         Column({ space: 8 }) {
@@ -877,7 +878,7 @@ export struct HandoffTab {
     } else if (this.state === 'error') {
       TabHint({ text: t('加载失败（桌面端可能离线）') })
     } else if (this.chain === null) {
-      EmptyState({ compact: true, icon: '🔗', title: t('该会话不在任何接力链上') })
+      EmptyState({ compact: true, iconRes: $r('app.media.ic_link'), title: t('该会话不在任何接力链上') })
     } else {
       Scroll() {
         this.chainBody(this.chain)

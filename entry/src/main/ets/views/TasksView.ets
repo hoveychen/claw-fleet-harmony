@@ -578,7 +578,7 @@ export struct TasksView {
       })
     } else if (!this.agentOnline) {
       EmptyState({
-        icon: '📴',
+        iconRes: $r('app.media.ic_wifi_off'),
         title: t('桌面端离线'),
         subtitle: t('已连上中转，但桌面端 Fleet 未在线，暂时拿不到任务快照。请确认电脑上的 Fleet 正在运行。'),
       })
@@ -590,7 +590,7 @@ export struct TasksView {
       })
     } else {
       EmptyState({
-        icon: '📭',
+        iconRes: $r('app.media.ic_inbox'),
         title: t('还没有会话'),
         subtitle: t('桌面端各会话上线后会出现在这里。'),
       })
@@ -726,7 +726,7 @@ export struct TasksView {
       // Meta
       Flex({ wrap: FlexWrap.Wrap }) {
         Row({ space: 3 }) {
-          Text('📁').fontSize(11)
+          Icon({ src: $r('app.media.ic_folder'), iconSize: 12, color: this.tk().textDim })
           Text(s.workspaceName)
             .fontSize(12)
             .fontColor(this.tk().textDim)
@@ -738,7 +738,7 @@ export struct TasksView {
 
         if (s.handoff) {
           Row({ space: 3 }) {
-            Text('🔀').fontSize(11)
+            Icon({ src: $r('app.media.ic_workflow'), iconSize: 12, color: this.tk().textDim })
             Text(`${s.handoff.hop}/${s.handoff.chainLen}`).fontSize(12).fontColor(this.tk().textDim)
           }
           .margin({ right: 10 })
@@ -821,7 +821,7 @@ export struct TasksView {
     Column() {
       this.filterBar()
       if (this.visibleSessions().length === 0) {
-        EmptyState({ compact: true, icon: '🔎', title: t('没有匹配的会话') })
+        EmptyState({ compact: true, iconRes: $r('app.media.ic_search_x'), title: t('没有匹配的会话') })
       } else {
         List({ space: 8 }) {
           ForEach(this.visibleSessions(), (s: SessionInfo) => {

@@ -6,6 +6,7 @@ import { RelayClient, RelayRequestError } from '../common/Relay';
 import { SessionInfo } from '../models/Types';
 import { canResumeSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
+import { Icon } from '../common/Icon';
 
 /// New-session sheet + resume composer — the native port of
 /// mobile-web/src/views/Composer.tsx. NewSessionSheet spawns a fresh headless
@@ -322,9 +323,7 @@ export struct NewSessionSheet {
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
             .layoutWeight(1)
-          Text('✕')
-            .fontSize(16)
-            .fontColor(this.tk().textDim)
+          Icon({ src: $r('app.media.ic_x'), iconSize: 16, color: this.tk().textDim })
             .onClick(() => this.onClose())
         }
         .width('100%')

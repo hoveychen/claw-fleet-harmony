@@ -10,6 +10,7 @@ import {
   FleetAskQuestion, ElicitationOption, FleetAskFormField, FleetAskImage, CommandView, CommandLeaf,
 } from '../models/Types';
 import { EmptyState } from './EmptyState';
+import { Icon } from '../common/Icon';
 
 /// The 决策 tab — native port of mobile-web/src/views/DecisionsView.tsx. Renders
 /// one focused card at a time with a queue bar (the desktop panel's active-card
@@ -415,13 +416,13 @@ export struct DecisionsView {
       if (this.decisions.length === 0) {
         if (this.agentOnline) {
           EmptyState({
-            icon: '✅',
+            iconRes: $r('app.media.ic_circle_check_big'),
             title: t('没有待处理的决策'),
             subtitle: t('所有决策卡都已作答，收工。有新决策时会自动出现在这里。'),
           })
         } else {
           EmptyState({
-            icon: '📴',
+            iconRes: $r('app.media.ic_wifi_off'),
             title: t('桌面端离线'),
             subtitle: t('暂时收不到新决策，等桌面端重新上线就会同步过来。'),
           })
@@ -1126,9 +1127,7 @@ struct QuestionsCard {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      Text('✎')
-        .fontSize(14)
-        .fontColor(this.tk().textDim)
+      Icon({ src: $r('app.media.ic_pencil'), iconSize: 14, color: this.tk().textDim })
         .onClick(() => this.editToOther(q, o))
     }
     .width('100%')
@@ -1179,9 +1178,11 @@ struct QuestionsCard {
         .width('100%')
       } else if (field.kind === 'checkbox') {
         Row({ space: 8 }) {
-          Text((this.form.get(field.name) ?? 'false') === 'true' ? '☑' : '☐')
-            .fontSize(18)
-            .fontColor((this.form.get(field.name) ?? 'false') === 'true' ? this.tk().accent : this.tk().textDim)
+          Icon({
+            src: (this.form.get(field.name) ?? 'false') === 'true' ? $r('app.media.ic_square_check_big') : $r('app.media.ic_square'),
+            iconSize: 18,
+            color: (this.form.get(field.name) ?? 'false') === 'true' ? this.tk().accent : this.tk().textDim
+          })
           Text(field.label).fontSize(13).fontColor(this.tk().text)
         }
         .width('100%')

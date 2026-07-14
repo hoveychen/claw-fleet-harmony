@@ -4,6 +4,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
 import { WikiDoc, WikiVersion, WikiFilePayload } from '../models/Types';
+import { Icon } from '../common/Icon';
 
 /// 全屏 wiki 阅读页 — the native port of mobile-web/src/views/WikiDocView.tsx.
 /// Markdown docs render inline via the native MarkdownView. HTML / htmlDir docs
@@ -175,7 +176,7 @@ export struct WikiDocView {
             // HTML / htmlDir: full-fidelity render needs an ArkWeb surface the
             // 元服务 sandbox restricts. Point the user to the desktop.
             Column({ space: 10 }) {
-              Text('🖥️').fontSize(40)
+              Icon({ src: $r('app.media.ic_monitor'), iconSize: 40, color: this.tk().textSecondary })
               Text(t('这是一个 HTML 页面'))
                 .fontSize(16)
                 .fontWeight(FontWeight.Medium)

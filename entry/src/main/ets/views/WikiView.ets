@@ -3,6 +3,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { WikiDoc, WikiSearchHit } from '../models/Types';
 import { EmptyState } from './EmptyState';
+import { Icon } from '../common/Icon';
 
 /// 知识库 tab — the native port of mobile-web/src/views/WikiView.tsx. Lists every
 /// `fleet wiki publish` doc; empty search groups by slug virtual-folder, ≥2 chars
@@ -285,7 +286,7 @@ export struct WikiView {
 
       Row({ space: 8 }) {
         Row({ space: 6 }) {
-          Text('🔍').fontSize(13)
+          Icon({ src: $r('app.media.ic_search'), iconSize: 16, color: this.tk().textDim })
           TextInput({ text: this.query, placeholder: t('搜索标题 / 正文…') })
             .layoutWeight(1)
             .fontSize(14)
@@ -338,7 +339,7 @@ export struct WikiView {
             Text(t('加载中…')).fontSize(13).fontColor(this.tk().textDim).width('100%').margin({ top: 20 })
           } else if (this.docs.length === 0) {
             EmptyState({
-              icon: '📚',
+              iconRes: $r('app.media.ic_book_open'),
               title: t('还没有归档的文档'),
               subtitle: t('桌面端 agent 用 fleet wiki publish 发布后，文档会出现在这里。'),
             })
@@ -346,14 +347,14 @@ export struct WikiView {
             if (this.searching) {
               Text(t('搜索中…')).fontSize(13).fontColor(this.tk().textDim).width('100%')
             } else if (this.results().length === 0) {
-              EmptyState({ compact: true, icon: '🔎', title: t('没有匹配「{0}」的文档。', this.query) })
+              EmptyState({ compact: true, iconRes: $r('app.media.ic_search_x'), title: t('没有匹配「{0}」的文档。', this.query) })
             } else {
               ForEach(this.results(), (doc: WikiDoc) => {
                 this.docRow(doc, this.snippetBySlug.get(doc.slug) ?? '')
               }, (doc: WikiDoc) => doc.slug)
             }
           } else if (this.groups().length === 0) {
-            EmptyState({ compact: true, icon: '📄', title: t('该项目下没有文档。') })
+            EmptyState({ compact: true, iconRes: $r('app.media.ic_file_text'), title: t('该项目下没有文档。') })
           } else {
             ForEach(this.groups(), (g: DocGroup) => {
               Text(g.folder.length > 0 ? g.folder : t('未归类'))

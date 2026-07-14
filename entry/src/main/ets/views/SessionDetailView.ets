@@ -31,6 +31,7 @@ import {
 } from '../common/TaskNotification';
 import { SessionInfo, SessionStatus, RawMessage, ContentBlock, LiveThinking } from '../models/Types';
 import { ResumeComposer } from './Composer';
+import { Icon } from '../common/Icon';
 
 const TAIL_POLL_MS = 2500;
 const TAIL_INITIAL = 120;
@@ -516,7 +517,7 @@ export struct SessionDetailView {
   thinkingBlock(b: ContentBlock, key: number) {
     Column({ space: 4 }) {
       Row({ space: 4 }) {
-        Text('✨').fontSize(12)
+        Icon({ src: $r('app.media.ic_sparkles'), iconSize: 13, color: this.tk().accent })
         Text(t('思考')).fontSize(12).fontColor(this.tk().textDim)
         Text(this.expanded.has(key) ? '▾' : '▸').fontSize(12).fontColor(this.tk().textDim)
       }
@@ -609,7 +610,7 @@ export struct SessionDetailView {
     Column({ space: 4 }) {
       Row({ space: 4 }) {
         Circle({ width: 6, height: 6 }).fill(this.tk().accent)
-        Text('✨').fontSize(12)
+        Icon({ src: $r('app.media.ic_sparkles'), iconSize: 13, color: this.tk().accent })
         Text(t('正在思考…')).fontSize(12).fontColor(this.tk().textDim)
       }
       Text(this.liveThinking?.thinking ?? '').fontSize(12).fontColor(this.tk().textDim).width('100%')
@@ -658,7 +659,7 @@ export struct SessionDetailView {
         }
         if (this.mainRows().length === 0 && this.liveThinking === null) {
           ListItem() {
-            EmptyState({ compact: true, icon: '💬', title: t('暂无可显示的消息') })
+            EmptyState({ compact: true, iconRes: $r('app.media.ic_message_square_dashed'), title: t('暂无可显示的消息') })
           }
         }
       }
@@ -781,7 +782,7 @@ struct TaskNotificationCard {
   build() {
     Column({ space: 6 }) {
       Row({ space: 6 }) {
-        Text('🤖').fontSize(13)
+        Icon({ src: $r('app.media.ic_bot'), iconSize: 14, color: this.tk().textSecondary })
         Text(taskTitle(this.parsed.summary))
           .fontSize(13).fontColor(this.tk().text).fontWeight(FontWeight.Medium)
           .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -805,9 +806,13 @@ struct TaskNotificationCard {
         MarkdownView({ content: this.parsed.result ?? '', mdFontSize: 13 })
       }
       if (this.hasFile()) {
-        Text(`📄 ${taskBasename(this.parsed.outputFile ?? '')}`)
-          .fontSize(11).fontColor(this.tk().textDim).width('100%')
-          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row({ space: 4 }) {
+          Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textDim })
+          Text(taskBasename(this.parsed.outputFile ?? ''))
+            .fontSize(11).fontColor(this.tk().textDim).layoutWeight(1)
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
       }
     }
     .width('100%')
