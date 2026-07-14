@@ -1,5 +1,4 @@
-import { promptAction } from '@kit.ArkUI';
-import { t } from '../common/I18n';
+import { t, getLang } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
@@ -101,6 +100,16 @@ interface QuestionsAnswer {
 /// so seed from JSON.parse and index-assign (Record supports index writes).
 function emptyStrRecord(): Record<string, string> {
   return JSON.parse('{}') as Record<string, string>;
+}
+
+// Relay request/response shapes for the guard AI risk analysis (guard_analyze).
+interface GuardAnalyzeParams {
+  command: string;
+  context: string;
+  lang: string;
+}
+interface GuardAnalyzeResp {
+  analysis: string;
 }
 
 // ── Guard "always allow" prefix computation (port of the web heuristic) ────────
@@ -413,9 +422,29 @@ struct GuardCard {
   @State private reason: string = '';
   @State private showReason: boolean = false;
   @State private prefixMenuOpen: boolean = false;
+  // Auto-fired LLM risk analysis: 'loading' | 'unavailable' | markdown text.
+  @State private analysis: string = 'loading';
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  aboutToAppear(): void {
+    const client = this.client;
+    if (!client) {
+      this.analysis = 'unavailable';
+      return;
+    }
+    // Context is best-effort; the mobile client hasn't loaded the transcript
+    // tail here, so we send the command alone (the desktop still classifies it).
+    const params: GuardAnalyzeParams = { command: this.request.command, context: '', lang: getLang() };
+    client.request<GuardAnalyzeResp>('guard_analyze', params, 40000)
+      .then((r: GuardAnalyzeResp) => {
+        this.analysis = r.analysis.length > 0 ? r.analysis : 'unavailable';
+      })
+      .catch((_e: Object) => {
+        this.analysis = 'unavailable';
+      });
   }
 
   private prefixes(): string[] {
@@ -462,6 +491,29 @@ struct GuardCard {
     }
   }
 
+  @Builder
+  analysisBlock() {
+    // 'unavailable' hides the block entirely (LLM off / offline), matching web.
+    if (this.analysis !== 'unavailable') {
+      Column({ space: 4 }) {
+        Text(t('AI 风险分析')).fontSize(12).fontColor(this.tk().textDim).fontWeight(FontWeight.Medium)
+        if (this.analysis === 'loading') {
+          Row({ space: 6 }) {
+            LoadingProgress().width(16).height(16).color(this.tk().accent)
+            Text(t('分析中…')).fontSize(12).fontColor(this.tk().textSecondary)
+          }
+        } else {
+          MarkdownView({ content: this.analysis, mdFontSize: 13 })
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+      .padding(10)
+      .borderRadius(8)
+      .backgroundColor(this.tk().bgInput)
+    }
+  }
+
   build() {
     Column({ space: 10 }) {
       Text(this.request.command)
@@ -486,6 +538,7 @@ struct GuardCard {
         }
         .width('100%')
       }
+      this.analysisBlock()
       if (this.showReason) {
         TextArea({ text: this.reason, placeholder: t('拒绝理由（可选，会转告给 AI）') })
           .fontSize(13)
