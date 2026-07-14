@@ -16,7 +16,8 @@ import { NewSessionSheet } from './Composer';
 import { UsageView } from './UsageView';
 import { RepoView } from './RepoView';
 import { RepoDetailView } from './RepoDetailView';
-import { RepoSummary } from '../models/Types';
+import { WikiDocView } from './WikiDocView';
+import { RepoSummary, WikiDoc } from '../models/Types';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -63,6 +64,8 @@ export struct MainShell {
   // The 仓库 list overlay + the selected-repo detail overlay above it.
   @State private showRepo: boolean = false;
   @State private repoDetail: RepoSummary | null = null;
+  // The open wiki doc (full-screen reader overlay), opened from the Wiki tab.
+  @State private wikiDoc: WikiDoc | null = null;
   // Today's cumulative token/cost, polled while the desktop is online; shown in
   // the header and handed to the Usage page so it isn't recomputed there.
   @State private todayUsage: TodayUsage | null = null;
@@ -406,6 +409,15 @@ export struct MainShell {
           },
         })
       }
+      if (this.wikiDoc !== null) {
+        WikiDocView({
+          doc: this.wikiDoc,
+          client: this.client,
+          onBack: () => {
+            this.wikiDoc = null;
+          },
+        })
+      }
     }
     .width('100%')
     .height('100%')
@@ -453,7 +465,12 @@ export struct MainShell {
             .justifyContent(FlexAlign.Center)
           }
         } else if (this.tab === 'wiki') {
-          WikiView()
+          WikiView({
+            client: this.client,
+            onOpenDoc: (doc: WikiDoc) => {
+              this.wikiDoc = doc;
+            },
+          })
         } else {
           MoreView({
             onRepair: this.onRepair,

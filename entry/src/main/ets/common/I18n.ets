@@ -422,6 +422,14 @@ const ENTRIES: [string, string][] = [
   ['还没有攒够采样点，桌面端跑一阵子再看。',
     'Not enough samples yet — leave the desktop running for a while.'],
   ['纵轴 0–100%', 'y: 0–100%'],
+
+  // ── P6 次要页补充 ──
+  ['💬 纯聊天 — 不绑定任何项目目录', '💬 Pure chat — not bound to any project'],
+  ['确定', 'OK'],
+  ['订阅中…', 'Subscribing…'],
+  ['这是一个 HTML 页面', 'This is an HTML page'],
+  ['元服务暂不支持内联渲染 HTML 文档，请在桌面端 Fleet 的知识库中查看。',
+    'The atomic service can\'t render HTML docs inline yet — view it in the desktop Fleet wiki.'],
 ];
 
 const DICT: Map<string, string> = new Map<string, string>(ENTRIES);
