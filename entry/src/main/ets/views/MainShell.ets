@@ -18,6 +18,7 @@ import { RepoView } from './RepoView';
 import { RepoDetailView } from './RepoDetailView';
 import { WikiDocView } from './WikiDocView';
 import { RepoSummary, WikiDoc } from '../models/Types';
+import { Icon } from '../common/Icon';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -297,10 +298,10 @@ export struct MainShell {
   }
 
   @Builder
-  tabItem(key: string, icon: string, label: string, badge: number) {
+  tabItem(key: string, icon: Resource, label: string, badge: number) {
     Column({ space: 2 }) {
       Stack({ alignContent: Alignment.TopEnd }) {
-        Text(icon).fontSize(20)
+        Icon({ src: icon, iconSize: 22, color: this.tab === key ? this.tk().accent : this.tk().textSecondary })
         if (badge > 0) {
           Text(badge > 99 ? '99+' : `${badge}`)
             .fontSize(9)
@@ -347,11 +348,11 @@ export struct MainShell {
   @Builder
   bottomBar() {
     Row() {
-      this.tabItem('decisions', '📥', t('决策'), this.decisions.length)
-      this.tabItem('tasks', '📋', t('任务'), 0)
+      this.tabItem('decisions', $r('app.media.ic_inbox'), t('决策'), this.decisions.length)
+      this.tabItem('tasks', $r('app.media.ic_list_todo'), t('任务'), 0)
       this.fab()
-      this.tabItem('wiki', '📚', t('知识库'), 0)
-      this.tabItem('more', '⋯', t('更多'), 0)
+      this.tabItem('wiki', $r('app.media.ic_book_open'), t('知识库'), 0)
+      this.tabItem('more', $r('app.media.ic_ellipsis'), t('更多'), 0)
     }
     .width('100%')
     .height(60)

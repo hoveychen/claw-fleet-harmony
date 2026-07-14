@@ -3,6 +3,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { RepoSummary } from '../models/Types';
 import { EmptyState } from './EmptyState';
+import { Icon } from '../common/Icon';
 
 /// 仓库列表 — the native port of mobile-web/src/views/RepoView.tsx. Every git repo
 /// reachable from a session workspace, each with a "loose-ends" health tag
@@ -101,9 +102,11 @@ export struct RepoView {
   @Builder
   repoRow(repo: RepoSummary) {
     Row({ space: 10 }) {
-      Text('📦')
-        .fontSize(18)
-        .fontColor(repo.needsAttention ? this.tk().warning : this.tk().textSecondary)
+      Icon({
+        src: $r('app.media.ic_folder_git_2'),
+        iconSize: 18,
+        color: repo.needsAttention ? this.tk().warning : this.tk().textSecondary
+      })
       Column({ space: 4 }) {
         Text(repo.label)
           .fontSize(15)
@@ -144,7 +147,7 @@ export struct RepoView {
             Text(t('加载中…')).fontSize(13).fontColor(this.tk().textDim).width('100%').margin({ top: 20 })
           } else if (this.repos.length === 0) {
             EmptyState({
-              icon: '📦',
+              iconRes: $r('app.media.ic_folder_git_2'),
               title: t('没有发现 git 仓库'),
               subtitle: t('仓库来自桌面端各会话的工作目录，有会话在 git 仓库里工作时会出现在这里。'),
             })

@@ -1,4 +1,5 @@
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { Icon } from '../common/Icon';
 
 /// Centered icon + title + subtitle, the shared empty/placeholder state. Mirrors
 /// mobile-web's <EmptyState>. Subscribes to the resolved theme for its colors.
@@ -10,7 +11,11 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 @Component
 export struct EmptyState {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  /// Legacy emoji fallback. Prefer `iconRes` (a lucide SVG) for new call sites;
+  /// when both are set `iconRes` wins.
   @Prop icon: string = '';
+  /// Lucide vector icon resource, e.g. `$r('app.media.ic_inbox')`.
+  @Prop iconRes: Resource | undefined = undefined;
   @Prop title: string = '';
   @Prop subtitle: string = '';
   @Prop spin: boolean = false;
@@ -34,6 +39,8 @@ export struct EmptyState {
           .width(this.compact ? 30 : 40)
           .height(this.compact ? 30 : 40)
           .color(this.tk().accent)
+      } else if (this.iconRes !== undefined) {
+        Icon({ src: this.iconRes, iconSize: this.compact ? 34 : 44, color: this.tk().textDim })
       } else if (this.icon.length > 0) {
         Text(this.icon).fontSize(this.compact ? 34 : 46)
       }

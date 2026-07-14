@@ -3,6 +3,7 @@ import { promptAction } from '@kit.ArkUI';
 import { t, setLang } from '../common/I18n';
 import { ColorTokens, themeTokens, setThemeMode, ThemeMode } from '../common/Theme';
 import { registerForPush } from '../common/PushRegister';
+import { Icon } from '../common/Icon';
 
 /// The "更多" tab: language + theme switchers (wired end-to-end), a re-pair entry,
 /// and an about block. Connection/notification rows fill in once the P2 relay
@@ -64,9 +65,9 @@ export struct MoreView {
   }
 
   @Builder
-  navRow(icon: string, label: string, sub: string, onTap: () => void) {
+  navRow(icon: Resource, label: string, sub: string, onTap: () => void) {
     Row({ space: 12 }) {
-      Text(icon).fontSize(18)
+      Icon({ src: icon, iconSize: 18, color: this.tk().textSecondary })
       Column({ space: 2 }) {
         Text(label).fontSize(15).fontColor(this.tk().text)
         Text(sub).fontSize(12).fontColor(this.tk().textDim).maxLines(1)
@@ -114,8 +115,8 @@ export struct MoreView {
 
         this.sectionTitle(t('工具'))
         Column({ space: 8 }) {
-          this.navRow('📁', t('仓库'), t('查看未合并 worktree 与未推提交'), () => this.onOpenRepo())
-          this.navRow('📊', t('账号与用量'), t('今日花费、账号档案与限流占用'), () => this.onOpenUsage())
+          this.navRow($r('app.media.ic_folder_git_2'), t('仓库'), t('查看未合并 worktree 与未推提交'), () => this.onOpenRepo())
+          this.navRow($r('app.media.ic_gauge'), t('账号与用量'), t('今日花费、账号档案与限流占用'), () => this.onOpenUsage())
         }
         .width('100%')
 

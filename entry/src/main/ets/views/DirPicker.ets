@@ -2,6 +2,7 @@ import { t } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { BrowseDirResponse, BrowseEntry } from '../models/Types';
+import { Icon } from '../common/Icon';
 
 /// Directory picker overlay — the native port of mobile-web/src/views/DirPicker.tsx.
 /// Lets a phone pick a directory that lives on the *desktop* host, one level at a
@@ -97,9 +98,7 @@ export struct DirPicker {
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
             .layoutWeight(1)
-          Text('✕')
-            .fontSize(16)
-            .fontColor(this.tk().textDim)
+          Icon({ src: $r('app.media.ic_x'), iconSize: 16, color: this.tk().textDim })
             .onClick(() => this.onClose())
         }
         .width('100%')
@@ -123,7 +122,7 @@ export struct DirPicker {
         Scroll() {
           Column() {
             if (this.data !== null && this.data.parent !== null) {
-              this.rowItem('⬆', t('上一级'), () => {
+              this.rowItem($r('app.media.ic_chevron_up'), t('上一级'), () => {
                 const parent = this.data?.parent;
                 if (parent !== null && parent !== undefined) {
                   this.load(parent);
@@ -132,7 +131,7 @@ export struct DirPicker {
             }
             if (this.data !== null) {
               ForEach(this.data.entries, (e: BrowseEntry) => {
-                this.rowItem(e.isGitRepo ? '📦' : '📁', e.name, () => this.load(e.path))
+                this.rowItem(e.isGitRepo ? $r('app.media.ic_folder_git_2') : $r('app.media.ic_folder'), e.name, () => this.load(e.path))
               }, (e: BrowseEntry) => e.path)
             }
             if (this.data !== null && !this.loading && this.data.entries.length === 0) {
@@ -186,9 +185,9 @@ export struct DirPicker {
   }
 
   @Builder
-  rowItem(icon: string, name: string, onTap: () => void) {
+  rowItem(icon: Resource, name: string, onTap: () => void) {
     Row({ space: 10 }) {
-      Text(icon).fontSize(15)
+      Icon({ src: icon, iconSize: 16, color: this.tk().textSecondary })
       Text(name)
         .fontSize(14)
         .fontColor(this.tk().text)
