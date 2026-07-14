@@ -1,13 +1,30 @@
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, ConfigurationConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { initTheme, setSystemDark } from '../common/Theme';
+import { initI18n } from '../common/I18n';
 
 const DOMAIN = 0x0000;
 const TAG = 'fleet';
 
+/// COLOR_MODE_LIGHT → light; DARK and NOT_SET both resolve to dark, matching the
+/// web client's `color-scheme: dark` default.
+function isDark(mode?: ConfigurationConstant.ColorMode): boolean {
+  return mode !== ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
+}
+
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    const cfg = this.context.config;
+    const deviceIsZh = (cfg.language ?? 'zh').toLowerCase().startsWith('zh');
+    initI18n(deviceIsZh);
+    initTheme(isDark(cfg.colorMode));
     this.captureLaunchRoute(want);
+  }
+
+  onConfigurationUpdate(newConfig: Configuration): void {
+    // Follow OS light/dark flips while the app is running.
+    setSystemDark(isDark(newConfig.colorMode));
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
