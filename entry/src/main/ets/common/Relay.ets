@@ -24,6 +24,11 @@ const REQUEST_TIMEOUT_MS = 15000;
 const HELLO_INTERVAL_MS = 15000;
 const MAX_RECONNECT_MS = 15000;
 
+/// ArkTS bans untyped object literals (`{}`) and object literals for `Record`
+/// types, so we use an empty class instance wherever a "no data" / "no params"
+/// placeholder object is needed on the wire.
+class EmptyObj {}
+
 /// Self-description this device announces so it appears in the desktop's device
 /// list. Mirrors mobile-web's DeviceInfo.
 export interface DeviceInfo {
@@ -86,7 +91,11 @@ interface MsgFrame {
 
 interface PendingEntry {
   resolve: (v: Object) => void;
-  reject: (e: Error) => void;
+  // Typed as Object (not Error): ArkTS's arkts-no-structural-typing rejects
+  // passing a RelayRequestError to an `(e: Error)` param, but every value IS-A
+  // Object nominally, so this is always assignable. The rejected value is still
+  // a real Error subclass at runtime (instanceof Error holds).
+  reject: (e: Object) => void;
   timer: number;
 }
 
@@ -346,7 +355,7 @@ export class RelayClient {
         this.pending.delete(reqId);
         clearTimeout(entry.timer);
         if (payload.ok === true) {
-          entry.resolve(payload.data ?? ({} as Object));
+          entry.resolve(payload.data ?? new EmptyObj());
         } else {
           entry.reject(new RelayRequestError(payload.error ?? '请求失败', true));
         }
@@ -390,19 +399,20 @@ export class RelayClient {
 
   /// Answer a decision — mirrors mobile_relay::handle_answer's shapes. `fields`
   /// is a JSON object serialised into the payload alongside {event,kind,id}.
-  answer(kind: string, id: string, fields: Record<string, Object>): void {
-    const base: Record<string, Object> = { event: 'answer', kind, id };
-    for (const key of Object.keys(fields)) {
-      base[key] = fields[key];
-    }
-    void this.sealAndSend(JSON.stringify(base));
+  /// `payload` is a fully-formed answer envelope (a declared interface instance
+  /// carrying {event:'answer', kind, id, …fields}); the decision views (P4) build
+  /// the concrete shape. Kept as `Object` because ArkTS bans dynamic `Record`
+  /// literals, so the merge happens on the caller side against a typed interface.
+  answer(payload: Object): void {
+    void this.sealAndSend(JSON.stringify(payload));
   }
 
-  /// Data request to the agent (pending_snapshot / task_plans / …).
-  request<T>(method: string, params?: Record<string, Object>, timeoutMs?: number): Promise<T> {
+  /// Data request to the agent (pending_snapshot / task_plans / …). `params` is
+  /// a declared interface instance (never a `Record` literal — banned in ArkTS).
+  request<T>(method: string, params?: Object, timeoutMs?: number): Promise<T> {
     this.reqSeq += 1;
     const reqId = `${this.reqPrefix}-${this.reqSeq}`;
-    return new Promise<T>((resolve: (v: T) => void, reject: (e: Error) => void) => {
+    return new Promise<T>((resolve: (v: T) => void, reject: (e: Object) => void) => {
       if (!this.ws) {
         reject(new RelayRequestError('尚未连接 relay', false));
         return;
@@ -417,7 +427,7 @@ export class RelayClient {
         timer,
       };
       this.pending.set(reqId, entry);
-      const reqFrame: ReqPayload = { event: 'req', req_id: reqId, method, params: params ?? {} };
+      const reqFrame: ReqPayload = { event: 'req', req_id: reqId, method, params: params ?? new EmptyObj() };
       this.sealAndSend(JSON.stringify(reqFrame)).catch((_e: Object) => {
         const pendingEntry = this.pending.get(reqId);
         if (!pendingEntry) {
@@ -460,7 +470,7 @@ interface ReqPayload {
   event: string;
   req_id: string;
   method: string;
-  params: Record<string, Object>;
+  params: Object;
 }
 
 function helloPayload(info: DeviceInfo): string {

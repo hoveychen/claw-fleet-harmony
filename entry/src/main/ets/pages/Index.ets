@@ -42,8 +42,11 @@ struct Index {
       // Refresh the push subscription on a paired launch (fire-and-forget) —
       // preserves the on-device-verified P5 flow (getToken → subscribe → OpenID).
       registerForPush(this.ctx())
-        .then(() => {
-          hilog.info(DOMAIN, TAG, 'push refreshed on launch');
+        .then((state: string) => {
+          // Surface the subscription state so the relay client_hello can report
+          // pushSubscribed to the desktop (drives the push badge on the device row).
+          AppStorage.setOrCreate('pushSubscribed', state === 'subscribed');
+          hilog.info(DOMAIN, TAG, 'push refreshed on launch: %{public}s', state);
         })
         .catch((e: Object) => {
           hilog.warn(DOMAIN, TAG, 'push refresh failed: %{public}s', JSON.stringify(e));
