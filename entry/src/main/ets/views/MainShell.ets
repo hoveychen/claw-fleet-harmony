@@ -307,9 +307,13 @@ export struct MainShell {
           DecisionsView({
             decisions: this.decisions,
             agentOnline: this.agentOnline,
+            sessions: this.sessions,
             client: this.client,
             onAnswered: (id: string) => {
               this.removeDecision(id);
+            },
+            onOpenSession: (s: SessionInfo) => {
+              this.selectedSession = s;
             },
           })
         } else if (this.tab === 'tasks') {

@@ -5,7 +5,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
 import {
-  PendingDecision,
+  PendingDecision, SessionInfo,
   GuardRequest, PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest, FleetAskRequest,
   FleetAskQuestion, ElicitationOption, FleetAskFormField, FleetAskImage, CommandView, CommandLeaf,
 } from '../models/Types';
@@ -216,13 +216,28 @@ export struct DecisionsView {
 
   @Prop decisions: PendingDecision[] = [];
   @Prop agentOnline: boolean = false;
+  // Live sessions snapshot (owned by MainShell) so a card can link to the
+  // originating session's detail overlay; onOpenSession opens it.
+  @Prop sessions: SessionInfo[] = [];
   client: RelayClient | null = null;
   onAnswered: (id: string) => void = () => {};
+  onOpenSession: (session: SessionInfo) => void = () => {};
 
   @State private activeId: string = '';
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  /// The live session a decision belongs to, or null when it isn't in the
+  /// snapshot (subagent decision, or a session that just dropped offline).
+  private sessionFor(sessionId: string): SessionInfo | null {
+    for (const s of this.sessions) {
+      if (s.id === sessionId) {
+        return s;
+      }
+    }
+    return null;
   }
 
   private sorted(): PendingDecision[] {
@@ -301,6 +316,21 @@ export struct DecisionsView {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
+        if (this.sessionFor(this.meta(d).sessionId) !== null) {
+          Row({ space: 2 }) {
+            Text(t('会话')).fontSize(12).fontColor(this.tk().accent)
+            Text('›').fontSize(14).fontColor(this.tk().accent)
+          }
+          .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+          .borderRadius(6)
+          .backgroundColor(this.tk().accentSoft)
+          .onClick(() => {
+            const s = this.sessionFor(this.meta(d).sessionId);
+            if (s !== null) {
+              this.onOpenSession(s);
+            }
+          })
+        }
       }
       .width('100%')
       if (this.meta(d).aiTitle && (this.meta(d).aiTitle as string).length > 0) {
