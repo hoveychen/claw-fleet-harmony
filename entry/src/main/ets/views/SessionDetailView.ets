@@ -32,6 +32,7 @@ import {
 import { SessionInfo, SessionStatus, RawMessage, ContentBlock, LiveThinking } from '../models/Types';
 import { ResumeComposer } from './Composer';
 import { Icon } from '../common/Icon';
+import { CopyButton } from '../common/CopyButton';
 
 const TAIL_POLL_MS = 2500;
 const TAIL_INITIAL = 120;
@@ -366,6 +367,18 @@ export struct SessionDetailView {
     return parts.join('\n\n').trim();
   }
 
+  /// Plain-text of an assistant message's text blocks, for the copy button
+  /// (mirrors mobile-web's assistantText — text blocks only, no thinking/tools).
+  private assistantText(msg: RawMessage): string {
+    const parts: string[] = [];
+    for (const b of this.blocksOf(msg)) {
+      if (b.type === 'text' && b.text !== undefined && this.trimmed(b.text).length > 0) {
+        parts.push(b.text);
+      }
+    }
+    return parts.join('\n\n').trim();
+  }
+
   private isNotif(msg: RawMessage): boolean {
     const txt = this.userText(msg);
     return txt.includes('<task-notification>') && parseTaskNotification(txt) !== null;
@@ -570,7 +583,11 @@ export struct SessionDetailView {
         .padding(10)
         .borderRadius(10)
         .backgroundColor(this.tk().accentSoft)
-      Text(fmtTime(msg.timestamp)).fontSize(11).fontColor(this.tk().textDim)
+      Row({ space: 4 }) {
+        Text(fmtTime(msg.timestamp)).fontSize(11).fontColor(this.tk().textDim)
+        CopyButton({ text: this.userText(msg), iconSize: 13 })
+      }
+      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .alignItems(HorizontalAlign.End)
@@ -598,7 +615,13 @@ export struct SessionDetailView {
       ForEach(this.blocksOf(msg), (b: ContentBlock, j: number) => {
         this.blockView(b, index, j)
       }, (b: ContentBlock, j: number) => `${j}`)
-      Text(fmtTime(msg.timestamp)).fontSize(11).fontColor(this.tk().textDim)
+      Row({ space: 4 }) {
+        Text(fmtTime(msg.timestamp)).fontSize(11).fontColor(this.tk().textDim)
+        if (this.assistantText(msg).length > 0) {
+          CopyButton({ text: this.assistantText(msg), iconSize: 13 })
+        }
+      }
+      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
