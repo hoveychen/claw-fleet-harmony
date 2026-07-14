@@ -262,7 +262,7 @@ export struct WikiView {
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text('›').fontSize(18).fontColor(this.tk().textDim)
+      Icon({ src: $r('app.media.ic_chevron_right'), iconSize: 15, color: this.tk().textDim })
     }
     .width('100%')
     .padding(12)

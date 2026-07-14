@@ -2,6 +2,7 @@ import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { AccountUsage, ClaudeAccount, SourceUsage, UsageBar, TodayUsage, UsageHistoryPoint } from '../models/Types';
+import { Icon } from '../common/Icon';
 
 /// 「账号与用量」子页面 — the native port of mobile-web/src/views/UsageView.tsx.
 /// Today's cumulative cost (reused from the shell's today_usage poll), the Claude
@@ -169,7 +170,7 @@ export struct UsageView {
   header() {
     Row() {
       Row({ space: 2 }) {
-        Text('‹').fontSize(22).fontColor(this.tk().accent)
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
         Text(t('更多')).fontSize(15).fontColor(this.tk().accent)
       }
       .onClick(() => this.onBack())

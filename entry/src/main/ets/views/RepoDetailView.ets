@@ -2,6 +2,7 @@ import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { RepoSummary, RepoDetail, WorktreeHealth, CommitInfo, GitOpResult } from '../models/Types';
+import { Icon } from '../common/Icon';
 
 /// 单个仓库详情 — the native port of mobile-web/src/views/RepoDetailView.tsx. The
 /// main branch's push status, each worktree's loose-ends detail, recent commits,
@@ -105,7 +106,7 @@ export struct RepoDetailView {
   header() {
     Row() {
       Row({ space: 2 }) {
-        Text('‹').fontSize(22).fontColor(this.tk().accent)
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
         Text(t('仓库')).fontSize(15).fontColor(this.tk().accent)
       }
       .onClick(() => this.onBack())

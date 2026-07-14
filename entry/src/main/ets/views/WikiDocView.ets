@@ -155,7 +155,7 @@ export struct WikiDocView {
   header() {
     Row({ space: 8 }) {
       Row({ space: 2 }) {
-        Text('‹').fontSize(22).fontColor(this.tk().accent)
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
         Text(t('返回')).fontSize(15).fontColor(this.tk().accent)
       }
       .onClick(() => this.goBack())

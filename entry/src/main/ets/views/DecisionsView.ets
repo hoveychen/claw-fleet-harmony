@@ -361,7 +361,11 @@ struct PrecedingNarration {
     if (!this.loading && this.chunks.length > 0) {
       Column({ space: 6 }) {
         Row({ space: 4 }) {
-          Text(this.expanded ? '▾' : '▸').fontSize(11).fontColor(this.tk().textDim)
+          Icon({
+            src: this.expanded ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
+            iconSize: 12,
+            color: this.tk().textDim,
+          })
           Text(this.expanded
             ? t('Agent 过程中的说明')
             : t('Agent 过程中还说了 {0} 段', this.chunks.length))
@@ -503,7 +507,7 @@ export struct DecisionsView {
         if (this.sessionFor(this.meta(d).sessionId) !== null) {
           Row({ space: 2 }) {
             Text(t('会话')).fontSize(12).fontColor(this.tk().accent)
-            Text('›').fontSize(14).fontColor(this.tk().accent)
+            Icon({ src: $r('app.media.ic_chevron_right'), iconSize: 13, color: this.tk().accent })
           }
           .padding({ left: 8, right: 8, top: 3, bottom: 3 })
           .borderRadius(6)

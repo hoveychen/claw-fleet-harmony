@@ -478,7 +478,7 @@ export struct SessionDetailView {
   header() {
     Row({ space: 8 }) {
       Row({ space: 2 }) {
-        Text('‹').fontSize(22).fontColor(this.tk().accent)
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
         Text(t('返回')).fontSize(14).fontColor(this.tk().accent)
       }
       .onClick(() => this.onBack())
@@ -532,7 +532,11 @@ export struct SessionDetailView {
       Row({ space: 4 }) {
         Icon({ src: $r('app.media.ic_sparkles'), iconSize: 13, color: this.tk().accent })
         Text(t('思考')).fontSize(12).fontColor(this.tk().textDim)
-        Text(this.expanded.has(key) ? '▾' : '▸').fontSize(12).fontColor(this.tk().textDim)
+        Icon({
+          src: this.expanded.has(key) ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
+          iconSize: 13,
+          color: this.tk().textDim,
+        })
       }
       .onClick(() => this.toggleThinking(key))
       if (this.expanded.has(key)) {
@@ -816,7 +820,11 @@ struct TaskNotificationCard {
             .borderRadius(5).backgroundColor(this.tk().bgInput)
         }
         if (this.hasBody()) {
-          Text(this.open ? '▾' : '▸').fontSize(12).fontColor(this.tk().textDim)
+          Icon({
+            src: this.open ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
+            iconSize: 13,
+            color: this.tk().textDim,
+          })
         }
       }
       .width('100%')

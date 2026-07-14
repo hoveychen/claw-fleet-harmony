@@ -75,7 +75,7 @@ export struct MoreView {
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text('›').fontSize(20).fontColor(this.tk().textDim)
+      Icon({ src: $r('app.media.ic_chevron_right'), iconSize: 16, color: this.tk().textDim })
     }
     .width('100%')
     .padding(14)
@@ -175,7 +175,7 @@ export struct MoreView {
             .fontSize(15)
             .fontColor(this.tk().text)
             .layoutWeight(1)
-          Text('›').fontSize(20).fontColor(this.tk().textDim)
+          Icon({ src: $r('app.media.ic_chevron_right'), iconSize: 16, color: this.tk().textDim })
         }
         .width('100%')
         .padding(14)
