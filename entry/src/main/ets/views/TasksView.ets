@@ -5,6 +5,7 @@ import { RelayClient } from '../common/Relay';
 import { SearchHit, SessionInfo, SessionStatus } from '../models/Types';
 import { isFleetOwnedEntrypoint } from '../models/Types';
 import { EmptyState } from './EmptyState';
+import { Icon } from '../common/Icon';
 
 /// The 任务 tab — the native port of mobile-web/src/views/TasksView.tsx. Renders
 /// the desktop's live sessions snapshot (pushed over the relay), scoped to the
@@ -603,7 +604,7 @@ export struct TasksView {
     Column({ space: 8 }) {
       // Search
       Row({ space: 6 }) {
-        Text('🔍').fontSize(13)
+        Icon({ src: $r('app.media.ic_search'), iconSize: 16, color: this.tk().textDim })
         TextInput({ text: this.search, placeholder: t('搜索标题、计划、全文…') })
           .layoutWeight(1)
           .fontSize(14)
