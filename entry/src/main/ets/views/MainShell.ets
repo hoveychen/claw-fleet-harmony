@@ -12,6 +12,7 @@ import { TasksView } from './TasksView';
 import { WikiView } from './WikiView';
 import { MoreView } from './MoreView';
 import { SessionDetailView } from './SessionDetailView';
+import { NewSessionSheet } from './Composer';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -51,6 +52,8 @@ export struct MainShell {
   // The session whose detail overlay is open (null = shell only). Opened from a
   // TasksView card; closed by the detail view's back button.
   @State private selectedSession: SessionInfo | null = null;
+  // The 新会话 sheet overlay (opened from the center FAB).
+  @State private showNewSession: boolean = false;
 
   private client: RelayClient | null = null;
   private clientId: string = '';
@@ -263,7 +266,9 @@ export struct MainShell {
     .layoutWeight(1)
     .height('100%')
     .justifyContent(FlexAlign.Center)
-    .onClick(() => this.onNewSession())
+    .onClick(() => {
+      this.showNewSession = true;
+    })
   }
 
   @Builder
@@ -290,6 +295,15 @@ export struct MainShell {
           client: this.client,
           onBack: () => {
             this.selectedSession = null;
+          },
+        })
+      }
+      if (this.showNewSession) {
+        NewSessionSheet({
+          sessions: this.sessions,
+          client: this.client,
+          onClose: () => {
+            this.showNewSession = false;
           },
         })
       }

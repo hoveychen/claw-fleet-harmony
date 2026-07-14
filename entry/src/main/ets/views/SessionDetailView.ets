@@ -30,6 +30,7 @@ import {
   taskBasename,
 } from '../common/TaskNotification';
 import { SessionInfo, SessionStatus, RawMessage, ContentBlock, LiveThinking } from '../models/Types';
+import { ResumeComposer } from './Composer';
 
 const TAIL_POLL_MS = 2500;
 const TAIL_INITIAL = 120;
@@ -697,6 +698,13 @@ export struct SessionDetailView {
       }
       .layoutWeight(1)
       .width('100%')
+
+      // 继续会话 composer — only on the 消息 tab, only for resumable sessions
+      // (Fleet-owned, process ended, turn not in flight). The struct self-gates
+      // via canResumeSession, so mounting it here is a no-op otherwise.
+      if (this.tab === 'messages') {
+        ResumeComposer({ session: this.session, client: this.client })
+      }
     }
     .width('100%')
     .height('100%')
