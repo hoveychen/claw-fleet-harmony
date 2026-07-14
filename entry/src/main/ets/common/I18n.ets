@@ -134,6 +134,10 @@ const ENTRIES: [string, string][] = [
   ['没有匹配「{0}」的文档。', 'No docs match "{0}".'],
   ['知识库里没有找到「{0}」', '"{0}" was not found in the wiki'],
 
+  // ── DecisionsView: 提问前 narration ──
+  ['Agent 过程中的说明', 'Agent said while working'],
+  ['Agent 过程中还说了 {0} 段', 'Agent said {0} more while working'],
+
   // ── TasksView ──
   ['工作中', 'Working'],
   ['等待输入', 'Waiting for input'],

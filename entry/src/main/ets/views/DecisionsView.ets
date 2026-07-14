@@ -8,6 +8,7 @@ import {
   PendingDecision, SessionInfo,
   GuardRequest, PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest, FleetAskRequest,
   FleetAskQuestion, ElicitationOption, FleetAskFormField, FleetAskImage, CommandView, CommandLeaf,
+  RawMessage, ContentBlock,
 } from '../models/Types';
 import { EmptyState } from './EmptyState';
 import { Icon } from '../common/Icon';
@@ -20,8 +21,9 @@ import { Icon } from '../common/Icon';
 /// Native degradations vs. the web original (atomic-service constraints): the
 /// fleet-ask HTML preview can't render (ArkWeb `Web` is unavailable in an
 /// atomic service) so it shows a "view on desktop" note; markdown renders via the
-/// hand-rolled MarkdownView; images / preceding-narration / guard AI-analysis
-/// land in a follow-up pass. Answers are fully functional for all six kinds.
+/// hand-rolled MarkdownView. Preceding-narration (feature-gaps P4) is wired here
+/// via PrecedingNarration (tails the session + slices the agent's lead-up prose).
+/// Answers are fully functional for all six kinds.
 
 const KIND_LABELS: Record<string, string> = {
   'guard': '命令审批',
@@ -208,6 +210,187 @@ function stripTtsDivider(text: string): string {
   return kept.join('\n');
 }
 
+// ── Preceding-agent-narration (port of desktop usePrecedingAgentMessages) ─────
+// The words an agent buries in the turn leading up to a question — everything the
+// assistant said (plain text, tool_use/thinking stripped) since the user's last
+// genuine input. Shown as a collapsible block above the question body.
+
+interface NarrationTailParams {
+  path: string;
+  n: number;
+}
+
+const NARRATION_TAIL = 400;
+const NARRATION_MAX_CHUNKS = 40;
+
+// Tool names whose *result* counts as user input (answering an ask card / plan),
+// as opposed to ordinary Bash/Read plumbing which must not end the agent's span.
+const ASK_TOOL_NAMES: string[] = [
+  'AskUserQuestion',
+  'ExitPlanMode',
+  'mcp__fleet__fleet__ask',
+  'mcp__fleet__fleet__render_a2ui',
+];
+
+function isAskTool(name: string): boolean {
+  return ASK_TOOL_NAMES.includes(name) || name.includes('fleet__ask');
+}
+
+function narrationBlocks(msg: RawMessage): ContentBlock[] {
+  const c = msg.message?.content;
+  return Array.isArray(c) ? c as ContentBlock[] : [];
+}
+
+/// Concatenated plain text of an assistant message (skips non-text blocks).
+function assistantText(msg: RawMessage): string {
+  if (msg.type !== 'assistant' || msg.message === undefined) {
+    return '';
+  }
+  const content = msg.message.content;
+  if (typeof content === 'string') {
+    return (content as string).trim();
+  }
+  const parts: string[] = [];
+  for (const b of narrationBlocks(msg)) {
+    if (b.type === 'text' && b.text !== undefined) {
+      parts.push(b.text);
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+/// True when a user-role message is the user actually speaking: a typed prompt,
+/// or a tool_result answering an ask-family tool. Regular tool_results are false.
+function isUserInput(msg: RawMessage, toolNameById: Map<string, string>): boolean {
+  if (msg.type !== 'user' || msg.message === undefined) {
+    return false;
+  }
+  const content = msg.message.content;
+  if (typeof content === 'string') {
+    return (content as string).trim().length > 0;
+  }
+  const blocks = narrationBlocks(msg);
+  for (const b of blocks) {
+    if (b.type === 'text' && b.text !== undefined && b.text.trim().length > 0) {
+      return true;
+    }
+  }
+  for (const b of blocks) {
+    if (b.type === 'tool_result' && b.tool_use_id !== undefined) {
+      const name = toolNameById.get(b.tool_use_id);
+      if (name !== undefined && isAskTool(name)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+interface PrecedingChunk {
+  uuid: string;
+  text: string;
+}
+
+/// Agent narration since the user's last input — everything the assistant said
+/// after the last genuine user turn, across any intervening tool calls.
+function slicePrecedingMessages(messages: RawMessage[]): PrecedingChunk[] {
+  const toolNameById = new Map<string, string>();
+  for (const m of messages) {
+    for (const b of narrationBlocks(m)) {
+      if (b.type === 'tool_use' && b.id !== undefined && b.name !== undefined) {
+        toolNameById.set(b.id, b.name);
+      }
+    }
+  }
+  let boundary = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isUserInput(messages[i], toolNameById)) {
+      boundary = i;
+      break;
+    }
+  }
+  const out: PrecedingChunk[] = [];
+  for (let i = boundary + 1; i < messages.length; i++) {
+    const m = messages[i];
+    const text = assistantText(m);
+    if (text.length > 0) {
+      out.push({ uuid: m.uuid !== undefined ? m.uuid : `${i}`, text });
+    }
+  }
+  return out.length > NARRATION_MAX_CHUNKS ? out.slice(out.length - NARRATION_MAX_CHUNKS) : out;
+}
+
+/// Collapsible narration block. Remounts per active card (keyed ForEach), so a
+/// fresh decision re-fetches the tail and reopens collapsed.
+@Component
+struct PrecedingNarration {
+  @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  @StorageProp('lang') lang: string = 'zh';
+
+  session: SessionInfo = {} as SessionInfo;
+  client: RelayClient | null = null;
+
+  @State private chunks: PrecedingChunk[] = [];
+  @State private loading: boolean = true;
+  @State private expanded: boolean = false;
+
+  private tk(): ColorTokens {
+    return themeTokens(this.resolvedTheme);
+  }
+
+  aboutToAppear(): void {
+    const client = this.client;
+    const path = this.session.jsonlPath;
+    if (!client || path === undefined || path.length === 0) {
+      this.loading = false;
+      return;
+    }
+    const p: NarrationTailParams = { path, n: NARRATION_TAIL };
+    client.request<RawMessage[]>('tail', p)
+      .then((rows: RawMessage[]) => {
+        this.chunks = slicePrecedingMessages(rows);
+        this.loading = false;
+      })
+      .catch((_e: Object) => {
+        this.chunks = [];
+        this.loading = false;
+      });
+  }
+
+  build() {
+    if (!this.loading && this.chunks.length > 0) {
+      Column({ space: 6 }) {
+        Row({ space: 4 }) {
+          Text(this.expanded ? '▾' : '▸').fontSize(11).fontColor(this.tk().textDim)
+          Text(this.expanded
+            ? t('Agent 过程中的说明')
+            : t('Agent 过程中还说了 {0} 段', this.chunks.length))
+            .fontSize(11)
+            .fontColor(this.tk().textDim)
+        }
+        .width('100%')
+        .onClick(() => {
+          this.expanded = !this.expanded;
+        })
+        if (this.expanded) {
+          Column({ space: 10 }) {
+            ForEach(this.chunks, (c: PrecedingChunk) => {
+              MarkdownView({ content: c.text, mdFontSize: 13 })
+            }, (c: PrecedingChunk) => c.uuid)
+          }
+          .width('100%')
+          .padding(10)
+          .borderRadius(8)
+          .backgroundColor(this.tk().bgInput)
+          .alignItems(HorizontalAlign.Start)
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 @Component
@@ -369,6 +552,12 @@ export struct DecisionsView {
     Scroll() {
       Column({ space: 12 }) {
         this.cardHeader(d)
+        if (this.sessionFor(this.meta(d).sessionId) !== null) {
+          PrecedingNarration({
+            session: this.sessionFor(this.meta(d).sessionId) as SessionInfo,
+            client: this.client,
+          })
+        }
         if (d.kind === 'guard') {
           GuardCard({
             request: d.request as GuardRequest,
