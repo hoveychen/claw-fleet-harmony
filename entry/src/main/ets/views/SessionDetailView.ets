@@ -732,6 +732,9 @@ export struct SessionDetailView {
       // via canResumeSession, so mounting it here is a no-op otherwise.
       if (this.tab === 'messages') {
         ResumeComposer({ session: this.session, client: this.client })
+        // While the turn is still running, the same dock queues a follow-up
+        // instead of resuming. Self-gates via canEnqueueSession.
+        ResumeComposer({ session: this.session, client: this.client, mode: 'enqueue' })
       }
     }
     .width('100%')

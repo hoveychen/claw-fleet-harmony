@@ -4,7 +4,7 @@ import { t } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient, RelayRequestError } from '../common/Relay';
 import { SessionInfo } from '../models/Types';
-import { canResumeSession } from '../models/Types';
+import { canResumeSession, canEnqueueSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
 import { Icon } from '../common/Icon';
 import { loadDraftRaw, saveDraftRaw, clearDraft } from '../common/Draft';
@@ -154,6 +154,12 @@ interface ResumeParams {
   model?: string;
   effort?: string;
   permissionMode?: string;
+}
+
+interface EnqueueParams {
+  sessionId: string;
+  workspacePath: string;
+  text: string;
 }
 
 interface ChatWorkspaceResp {
@@ -556,6 +562,9 @@ export struct ResumeComposer {
 
   session: SessionInfo = {} as SessionInfo;
   client: RelayClient | null = null;
+  // 'resume': turn ended, submit resumes now. 'enqueue': turn still running,
+  // submit queues the message for delivery when the turn ends.
+  mode: string = 'resume';
 
   @State private prompt: string = '';
   @State private model: string = '';
@@ -568,13 +577,80 @@ export struct ResumeComposer {
     return themeTokens(this.resolvedTheme);
   }
 
+  private isEnqueue(): boolean {
+    return this.mode === 'enqueue';
+  }
+
+  private shouldShow(): boolean {
+    return this.isEnqueue()
+      ? canEnqueueSession(this.session)
+      : canResumeSession(this.session);
+  }
+
+  private pending(): string[] {
+    return this.session.pendingMessages ?? [];
+  }
+
+  private onSubmitDone(): void {
+    this.busy = false;
+    this.prompt = '';
+    this.sent = true;
+    setTimeout(() => {
+      this.sent = false;
+    }, 3000);
+  }
+
+  private onSubmitError(e: Object): void {
+    this.busy = false;
+    const msg = e instanceof Error ? (e as Error).message : t('恢复会话失败');
+    promptAction.showToast({ message: msg, duration: 2500 });
+  }
+
+  private buttonLabel(): string {
+    if (this.isEnqueue()) {
+      return this.busy ? t('排队中…') : (this.sent ? t('已排队') : t('排队'));
+    }
+    return this.busy ? t('发送中…') : (this.sent ? t('已发送') : t('继续会话'));
+  }
+
+  private submitEnabled(): boolean {
+    if (this.busy || this.client === null) {
+      return false;
+    }
+    // Enqueue must have text; resume tolerates empty (= continue).
+    return this.isEnqueue() ? this.prompt.trim().length > 0 : true;
+  }
+
+  private placeholderText(): string {
+    return this.isEnqueue()
+      ? t('会话运行中，发送后排队，本轮结束自动接上…')
+      : t('继续这个会话（留空 = continue）…');
+  }
+
   private submit(): void {
     const client = this.client;
     if (!client || this.busy) {
       return;
     }
-    this.busy = true;
     const trimmed = this.prompt.trim();
+    if (this.isEnqueue()) {
+      // Enqueue needs actual text (no "continue" fallback for a queued
+      // follow-up); the turn's own model/effort are carried at drain time.
+      if (trimmed.length === 0) {
+        return;
+      }
+      this.busy = true;
+      const eparams: EnqueueParams = {
+        sessionId: this.session.id,
+        workspacePath: this.session.workspacePath,
+        text: trimmed,
+      };
+      client.request<Object>('enqueue_message', eparams)
+        .then(() => this.onSubmitDone())
+        .catch((e: Object) => this.onSubmitError(e));
+      return;
+    }
+    this.busy = true;
     const params: ResumeParams = {
       sessionId: this.session.id,
       workspacePath: this.session.workspacePath,
@@ -593,25 +669,34 @@ export struct ResumeComposer {
       params.permissionMode = this.permissionMode;
     }
     client.request<Object>('resume_session', params)
-      .then(() => {
-        this.busy = false;
-        this.prompt = '';
-        this.sent = true;
-        setTimeout(() => {
-          this.sent = false;
-        }, 3000);
-      })
-      .catch((e: Object) => {
-        this.busy = false;
-        const msg = e instanceof Error ? (e as Error).message : t('恢复会话失败');
-        promptAction.showToast({ message: msg, duration: 2500 });
-      });
+      .then(() => this.onSubmitDone())
+      .catch((e: Object) => this.onSubmitError(e));
   }
 
   build() {
-    if (canResumeSession(this.session)) {
+    if (this.shouldShow()) {
       Column({ space: 8 }) {
-        TextArea({ text: this.prompt, placeholder: t('继续这个会话（留空 = continue）…') })
+        if (this.pending().length > 0) {
+          Column({ space: 4 }) {
+            Text(t('已排队，本轮结束后自动发送'))
+              .fontSize(11)
+              .fontColor(this.tk().textDim)
+              .width('100%')
+            ForEach(this.pending(), (m: string) => {
+              Text(m)
+                .fontSize(12)
+                .fontColor(this.tk().text)
+                .backgroundColor(this.tk().bgCard)
+                .borderRadius(8)
+                .padding({ left: 9, right: 9, top: 6, bottom: 6 })
+                .width('100%')
+                .maxLines(3)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }, (m: string, idx: number) => `${idx}:${m}`)
+          }
+          .width('100%')
+        }
+        TextArea({ text: this.prompt, placeholder: this.placeholderText() })
           .width('100%')
           .height(64)
           .fontSize(14)
@@ -623,29 +708,33 @@ export struct ResumeComposer {
             this.prompt = v;
           })
         Row({ space: 8 }) {
-          Column() {
-            OptionSelects({
-              model: this.model,
-              effort: this.effort,
-              permissionMode: this.permissionMode,
-              permissionDefaultLabel: '沿用权限',
-              onModel: (v: string) => {
-                this.model = v;
-              },
-              onEffort: (v: string) => {
-                this.effort = v;
-              },
-              onPermission: (v: string) => {
-                this.permissionMode = v;
-              },
-            })
+          if (!this.isEnqueue()) {
+            Column() {
+              OptionSelects({
+                model: this.model,
+                effort: this.effort,
+                permissionMode: this.permissionMode,
+                permissionDefaultLabel: '沿用权限',
+                onModel: (v: string) => {
+                  this.model = v;
+                },
+                onEffort: (v: string) => {
+                  this.effort = v;
+                },
+                onPermission: (v: string) => {
+                  this.permissionMode = v;
+                },
+              })
+            }
+            .layoutWeight(1)
+          } else {
+            Blank().layoutWeight(1)
           }
-          .layoutWeight(1)
-          Button(this.busy ? t('发送中…') : (this.sent ? t('已发送') : t('继续会话')))
+          Button(this.buttonLabel())
             .fontSize(14)
             .fontColor('#ffffff')
             .backgroundColor(this.tk().accent)
-            .enabled(!this.busy && this.client !== null)
+            .enabled(this.submitEnabled())
             .onClick(() => this.submit())
         }
         .width('100%')
