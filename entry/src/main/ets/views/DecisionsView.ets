@@ -1,3 +1,5 @@
+import { image } from '@kit.ImageKit';
+import { util } from '@kit.ArkTS';
 import { t, getLang } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
@@ -5,7 +7,7 @@ import { MarkdownView } from '../common/Markdown';
 import {
   PendingDecision,
   GuardRequest, PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest, FleetAskRequest,
-  FleetAskQuestion, ElicitationOption, FleetAskFormField, CommandView, CommandLeaf,
+  FleetAskQuestion, ElicitationOption, FleetAskFormField, FleetAskImage, CommandView, CommandLeaf,
 } from '../models/Types';
 import { EmptyState } from './EmptyState';
 
@@ -110,6 +112,17 @@ interface GuardAnalyzeParams {
 }
 interface GuardAnalyzeResp {
   analysis: string;
+}
+
+// Relay request/response shapes for a decision-card image asset (decision_asset).
+interface AssetParams {
+  id: string;
+  qidx: string;
+  rel: string;
+}
+interface AssetResp {
+  mime: string;
+  base64: string;
 }
 
 // ── Guard "always allow" prefix computation (port of the web heuristic) ────────
@@ -1196,6 +1209,17 @@ struct QuestionsCard {
           .fontSize(12).fontColor(this.tk().textDim).width('100%')
           .padding(8).borderRadius(6).backgroundColor(this.tk().bgInput)
       }
+      // fleet-ask images: render the gallery whenever present so no image is
+      // lost (html, if any, is degraded to the note above rather than rendered).
+      ForEach(q.images ?? [], (img: FleetAskImage) => {
+        DecisionImage({
+          requestId: this.request.id,
+          qidx: this.qi(),
+          name: img.name,
+          caption: img.caption ?? '',
+          client: this.client,
+        })
+      }, (img: FleetAskImage) => img.name)
       ForEach(q.options ?? [], (o: ElicitationOption) => {
         this.optionRow(q, o)
       })
@@ -1274,4 +1298,84 @@ struct QuestionsCard {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.substring(0, n)}…` : s;
+}
+
+// ── fleet-ask image asset ─────────────────────────────────────────────────────
+
+/// One fleet-ask image: fetched base64 over the relay's `decision_asset` method
+/// and decoded to a PixelMap (ArkUI Image can't take a data: URI directly).
+@Component
+struct DecisionImage {
+  @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  requestId: string = '';
+  qidx: number = 0;
+  name: string = '';
+  caption: string = '';
+  client: RelayClient | null = null;
+
+  @State private pm: image.PixelMap | null = null;
+  // 'loading' | 'ok' | 'error'
+  @State private status: string = 'loading';
+
+  private tk(): ColorTokens {
+    return themeTokens(this.resolvedTheme);
+  }
+
+  aboutToAppear(): void {
+    this.load();
+  }
+
+  private async load(): Promise<void> {
+    const client = this.client;
+    if (!client) {
+      this.status = 'error';
+      return;
+    }
+    this.status = 'loading';
+    try {
+      const params: AssetParams = { id: this.requestId, qidx: `q${this.qidx}`, rel: this.name };
+      // Asset bytes are MB-scale over a phone link; use a generous timeout.
+      const a = await client.request<AssetResp>('decision_asset', params, 60000);
+      const bytes = new util.Base64Helper().decodeSync(a.base64);
+      const src = image.createImageSource(bytes.buffer);
+      this.pm = await src.createPixelMap();
+      this.status = 'ok';
+    } catch (e) {
+      this.status = 'error';
+    }
+  }
+
+  build() {
+    Column({ space: 4 }) {
+      if (this.status === 'ok' && this.pm) {
+        Image(this.pm)
+          .width('100%')
+          .objectFit(ImageFit.Contain)
+          .borderRadius(8)
+      } else if (this.status === 'error') {
+        Text(t('图片加载失败，点按重试'))
+          .fontSize(12)
+          .fontColor(this.tk().textDim)
+          .width('100%')
+          .padding(12)
+          .borderRadius(8)
+          .backgroundColor(this.tk().bgInput)
+          .textAlign(TextAlign.Center)
+          .onClick(() => this.load())
+      } else {
+        Row({ space: 6 }) {
+          LoadingProgress().width(16).height(16).color(this.tk().accent)
+          Text(t('加载图片…')).fontSize(12).fontColor(this.tk().textDim)
+        }
+        .width('100%')
+        .padding(12)
+        .justifyContent(FlexAlign.Center)
+      }
+      if (this.caption.length > 0) {
+        Text(this.caption).fontSize(11).fontColor(this.tk().textSecondary).width('100%')
+      }
+    }
+    .width('100%')
+    .margin({ top: 6 })
+  }
 }
