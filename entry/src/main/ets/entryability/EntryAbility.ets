@@ -15,7 +15,7 @@ function isDark(mode?: ConfigurationConstant.ColorMode): boolean {
 }
 
 export default class EntryAbility extends UIAbility {
-  onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+  onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     const cfg = this.context.config;
     const deviceIsZh = (cfg.language ?? 'zh').toLowerCase().startsWith('zh');
     initI18n(deviceIsZh);
@@ -26,35 +26,15 @@ export default class EntryAbility extends UIAbility {
     selfTest().then((verdict: string) => {
       hilog.info(DOMAIN, TAG, 'crypto selfTest: %{public}s', verdict);
     });
-    this.captureLaunchRoute(want);
+    // No launch-route parsing: the 元服务 service_notification channel cannot
+    // carry tap data (verified 2026-07-14), so a notification tap only foregrounds
+    // the app — there is no decision id to route to. See TASKS.md plan
+    // harmony-native-client P7.
   }
 
   onConfigurationUpdate(newConfig: Configuration): void {
     // Follow OS light/dark flips while the app is running.
     setSystemDark(isDark(newConfig.colorMode));
-  }
-
-  onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
-    // Re-launched while already alive — e.g. a notification tap.
-    this.captureLaunchRoute(want);
-  }
-
-  /// A notification tap may carry routing params in `want.parameters`. The exact
-  /// clickAction → want mapping for the v1 service_notification channel is not
-  /// yet verified on-device (and the relay send-side does not set a clickAction
-  /// yet), so we conservatively stash any `tag` that arrives into AppStorage for
-  /// the page to consume; wiring the send-side clickAction is a follow-up once
-  /// its schema is confirmed.
-  private captureLaunchRoute(want: Want): void {
-    const params = want.parameters;
-    if (!params) {
-      return;
-    }
-    const tag = params.tag;
-    if (typeof tag === 'string' && tag.length > 0) {
-      AppStorage.setOrCreate('pendingRoute', tag);
-      hilog.info(DOMAIN, TAG, 'launch route tag: %{public}s', tag);
-    }
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
