@@ -11,6 +11,7 @@ import { DecisionsView } from './DecisionsView';
 import { TasksView } from './TasksView';
 import { WikiView } from './WikiView';
 import { MoreView } from './MoreView';
+import { SessionDetailView } from './SessionDetailView';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -47,6 +48,9 @@ export struct MainShell {
   // Flips true once the relay client is constructed (after clientId resolves),
   // gating the shell body so TasksView is created with a non-null client.
   @State private ready: boolean = false;
+  // The session whose detail overlay is open (null = shell only). Opened from a
+  // TasksView card; closed by the detail view's back button.
+  @State private selectedSession: SessionInfo | null = null;
 
   private client: RelayClient | null = null;
   private clientId: string = '';
@@ -278,6 +282,24 @@ export struct MainShell {
   }
 
   build() {
+    Stack() {
+      this.shell()
+      if (this.selectedSession !== null) {
+        SessionDetailView({
+          session: this.selectedSession,
+          client: this.client,
+          onBack: () => {
+            this.selectedSession = null;
+          },
+        })
+      }
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  shell() {
     Column() {
       this.header()
       Stack() {
@@ -301,8 +323,8 @@ export struct MainShell {
               connected: this.connected,
               agentOnline: this.agentOnline,
               sessionsLoaded: this.sessionsLoaded,
-              onOpenSession: (_s: SessionInfo) => {
-                // Session detail overlay lands in P5.
+              onOpenSession: (s: SessionInfo) => {
+                this.selectedSession = s;
               },
             })
           } else {
