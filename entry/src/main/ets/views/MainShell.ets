@@ -4,7 +4,7 @@ import { t } from '../common/I18n';
 import { RelayClient, DeviceInfo, RelayHandlers } from '../common/Relay';
 import { RelayStore } from '../common/RelayStore';
 import { loadClientId, deviceLabel, DEVICE_PLATFORM } from '../common/Device';
-import { SessionInfo, PendingDecision, PendingSnapshot, DecisionRequest, DecisionKind } from '../models/Types';
+import { SessionInfo, PendingDecision, PendingSnapshot, DecisionRequest, DecisionKind, TodayUsage } from '../models/Types';
 import { GuardRequest, ElicitationRequest, FleetAskRequest } from '../models/Types';
 import { PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest } from '../models/Types';
 import { DecisionsView } from './DecisionsView';
@@ -13,6 +13,7 @@ import { WikiView } from './WikiView';
 import { MoreView } from './MoreView';
 import { SessionDetailView } from './SessionDetailView';
 import { NewSessionSheet } from './Composer';
+import { UsageView } from './UsageView';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -54,9 +55,16 @@ export struct MainShell {
   @State private selectedSession: SessionInfo | null = null;
   // The 新会话 sheet overlay (opened from the center FAB).
   @State private showNewSession: boolean = false;
+  // The 账号与用量 overlay (opened from the More tab).
+  @State private showUsage: boolean = false;
+  // Today's cumulative token/cost, polled while the desktop is online; shown in
+  // the header and handed to the Usage page so it isn't recomputed there.
+  @State private todayUsage: TodayUsage | null = null;
 
   private client: RelayClient | null = null;
   private clientId: string = '';
+  // Generation counter cancelling the today_usage poll loop across reconnects.
+  private usageGen: number = 0;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
@@ -115,6 +123,9 @@ export struct MainShell {
         // missed while it was offline).
         if (online) {
           this.refreshPending();
+          this.startUsagePoll();
+        } else {
+          this.usageGen += 1; // cancel the poll loop
         }
       },
       onSessions: (list: SessionInfo[]) => {
@@ -150,6 +161,37 @@ export struct MainShell {
 
   private removeDecision(id: string): void {
     this.decisions = this.decisions.filter((d: PendingDecision) => d.id !== id);
+  }
+
+  /// Poll today_usage while the desktop is online (20s cadence, the desktop
+  /// computes the figure). A generation counter cancels stale loops so a
+  /// reconnect doesn't stack timers.
+  private startUsagePoll(): void {
+    this.usageGen += 1;
+    const gen = this.usageGen;
+    const tick = () => {
+      if (gen !== this.usageGen) {
+        return;
+      }
+      const client = this.client;
+      if (client && client.isAuthed) {
+        client.request<TodayUsage>('today_usage')
+          .then((u: TodayUsage) => {
+            if (gen === this.usageGen) {
+              this.todayUsage = u;
+            }
+          })
+          .catch((_e: Object) => {})
+          .finally(() => {
+            if (gen === this.usageGen) {
+              setTimeout(tick, 20000);
+            }
+          });
+      } else if (gen === this.usageGen) {
+        setTimeout(tick, 20000);
+      }
+    };
+    tick();
   }
 
   /// Pull the authoritative pending snapshot and replace the list, preserving
@@ -203,6 +245,16 @@ export struct MainShell {
     return this.agentOnline ? t('桌面端在线') : t('桌面端离线');
   }
 
+  private fmtTokens(n: number): string {
+    if (n >= 1000000) {
+      return `${(n / 1000000).toFixed(1)}M`;
+    }
+    if (n >= 1000) {
+      return `${(n / 1000).toFixed(1)}K`;
+    }
+    return `${n}`;
+  }
+
   @Builder
   header() {
     Row() {
@@ -211,6 +263,18 @@ export struct MainShell {
         .fontWeight(FontWeight.Bold)
         .fontColor(this.tk().text)
         .layoutWeight(1)
+      if (this.todayUsage !== null) {
+        Row({ space: 4 }) {
+          Text(`$${this.todayUsage.costUsd.toFixed(2)}`)
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.tk().text)
+          Text(this.fmtTokens(this.todayUsage.outputTokens))
+            .fontSize(11)
+            .fontColor(this.tk().textDim)
+        }
+        .margin({ right: 10 })
+      }
       Row({ space: 6 }) {
         Circle({ width: 8, height: 8 }).fill(this.statusColor())
         Text(this.statusLabel()).fontSize(12).fontColor(this.tk().textSecondary)
@@ -307,6 +371,15 @@ export struct MainShell {
           },
         })
       }
+      if (this.showUsage) {
+        UsageView({
+          client: this.client,
+          todayUsage: this.todayUsage,
+          onBack: () => {
+            this.showUsage = false;
+          },
+        })
+      }
     }
     .width('100%')
     .height('100%')
@@ -356,7 +429,14 @@ export struct MainShell {
         } else if (this.tab === 'wiki') {
           WikiView()
         } else {
-          MoreView({ onRepair: this.onRepair })
+          MoreView({
+            onRepair: this.onRepair,
+            connected: this.connected,
+            agentOnline: this.agentOnline,
+            onOpenUsage: () => {
+              this.showUsage = true;
+            },
+          })
         }
       }
       .layoutWeight(1)

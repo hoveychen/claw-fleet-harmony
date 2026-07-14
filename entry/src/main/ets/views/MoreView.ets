@@ -9,10 +9,48 @@ export struct MoreView {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
   @StorageProp('themeMode') themeMode: string = 'system';
+  @Prop connected: boolean = false;
+  @Prop agentOnline: boolean = false;
   onRepair: () => void = () => {};
+  onOpenUsage: () => void = () => {};
+  onOpenRepo: () => void = () => {};
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private connLabel(): string {
+    if (!this.connected) {
+      return t('连接中…');
+    }
+    return this.agentOnline ? t('桌面端在线') : t('桌面端离线');
+  }
+
+  private connColor(): string {
+    if (!this.connected) {
+      return this.tk().textDim;
+    }
+    return this.agentOnline ? this.tk().success : this.tk().warning;
+  }
+
+  @Builder
+  navRow(icon: string, label: string, sub: string, onTap: () => void) {
+    Row({ space: 12 }) {
+      Text(icon).fontSize(18)
+      Column({ space: 2 }) {
+        Text(label).fontSize(15).fontColor(this.tk().text)
+        Text(sub).fontSize(12).fontColor(this.tk().textDim).maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+      Text('›').fontSize(20).fontColor(this.tk().textDim)
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor(this.tk().bgCard)
+    .borderRadius(10)
+    .onClick(onTap)
   }
 
   @Builder
@@ -43,6 +81,26 @@ export struct MoreView {
           .fontWeight(FontWeight.Bold)
           .fontColor(this.tk().text)
           .width('100%')
+
+        this.sectionTitle(t('工具'))
+        Column({ space: 8 }) {
+          this.navRow('📁', t('仓库'), t('查看未合并 worktree 与未推提交'), () => this.onOpenRepo())
+          this.navRow('📊', t('账号与用量'), t('今日花费、账号档案与限流占用'), () => this.onOpenUsage())
+        }
+        .width('100%')
+
+        this.sectionTitle(t('连接与通知'))
+        Row() {
+          Text(t('桌面端')).fontSize(15).fontColor(this.tk().text).layoutWeight(1)
+          Row({ space: 6 }) {
+            Circle({ width: 8, height: 8 }).fill(this.connColor())
+            Text(this.connLabel()).fontSize(13).fontColor(this.tk().textSecondary)
+          }
+        }
+        .width('100%')
+        .padding(14)
+        .backgroundColor(this.tk().bgCard)
+        .borderRadius(10)
 
         this.sectionTitle(t('语言'))
         Row({ space: 8 }) {
