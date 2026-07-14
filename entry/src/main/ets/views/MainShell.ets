@@ -4,11 +4,19 @@ import { t } from '../common/I18n';
 import { RelayClient, DeviceInfo, RelayHandlers } from '../common/Relay';
 import { RelayStore } from '../common/RelayStore';
 import { loadClientId, deviceLabel, DEVICE_PLATFORM } from '../common/Device';
-import { SessionInfo } from '../models/Types';
+import { SessionInfo, PendingDecision, PendingSnapshot, DecisionRequest, DecisionKind } from '../models/Types';
+import { GuardRequest, ElicitationRequest, FleetAskRequest } from '../models/Types';
+import { PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest } from '../models/Types';
 import { DecisionsView } from './DecisionsView';
 import { TasksView } from './TasksView';
 import { WikiView } from './WikiView';
 import { MoreView } from './MoreView';
+
+/// Every DecisionRequest variant carries a string `id`; this lets us read it off
+/// the opaque business payload without discriminating the union.
+interface DecisionReqId {
+  id: string;
+}
 
 /// The paired-state app shell: a top header, the active tab body, and a bottom
 /// bar of 4 tabs split around a center "新会话" FAB. Mirrors mobile-web's App
@@ -32,6 +40,10 @@ export struct MainShell {
   @State private agentOnline: boolean = false;
   @State private sessionsLoaded: boolean = false;
   @State private sessions: SessionInfo[] = [];
+  // Pending decision cards (native peer of App.tsx's `decisions`). Fed by the
+  // live decision_created/decision_resolved events + the pending_snapshot pull;
+  // rendered by DecisionsView (the 6 card kinds land in P4's view work).
+  @State private decisions: PendingDecision[] = [];
   // Flips true once the relay client is constructed (after clientId resolves),
   // gating the shell body so TasksView is created with a non-null client.
   @State private ready: boolean = false;
@@ -91,15 +103,83 @@ export struct MainShell {
       },
       onAgentOnline: (online: boolean) => {
         this.agentOnline = online;
+        // A freshly-online desktop replays its pending decisions via the
+        // authoritative snapshot (live decision_created events may have been
+        // missed while it was offline).
+        if (online) {
+          this.refreshPending();
+        }
       },
       onSessions: (list: SessionInfo[]) => {
         this.sessions = list;
         this.sessionsLoaded = true;
       },
+      onDecisionCreated: (kind: string, request: Object) => {
+        this.addDecision(kind, request);
+      },
+      onDecisionResolved: (_kind: string, id: string) => {
+        this.removeDecision(id);
+      },
     };
     this.client = new RelayClient(pairing.relayUrl, pairing.secret, handlers, () => this.deviceInfo());
     this.client.connect();
     this.ready = true;
+  }
+
+  /// A live decision_created event. `request` is the opaque sealed payload's
+  /// business object; every DecisionRequest variant carries a string `id`.
+  private addDecision(kind: string, request: Object): void {
+    const req = request as DecisionRequest;
+    const id = (request as DecisionReqId).id;
+    if (!id || id.length === 0) {
+      return;
+    }
+    if (this.decisions.some((d: PendingDecision) => d.id === id)) {
+      return;
+    }
+    const entry: PendingDecision = { kind: kind as DecisionKind, id, request: req, arrivedAt: Date.now() };
+    this.decisions = this.decisions.concat(entry);
+  }
+
+  private removeDecision(id: string): void {
+    this.decisions = this.decisions.filter((d: PendingDecision) => d.id !== id);
+  }
+
+  /// Pull the authoritative pending snapshot and replace the list, preserving
+  /// each card's original arrival stamp so a refresh doesn't reshuffle order.
+  private refreshPending(): void {
+    const client = this.client;
+    if (!client) {
+      return;
+    }
+    client.request<PendingSnapshot>('pending_snapshot')
+      .then((snap: PendingSnapshot) => {
+        const prevArrived = new Map<string, number>();
+        for (const d of this.decisions) {
+          prevArrived.set(d.id, d.arrivedAt);
+        }
+        const now = Date.now();
+        const fresh: PendingDecision[] = [];
+        this.collectKind('guard', (snap.guard ?? []) as DecisionRequest[], fresh, prevArrived, now);
+        this.collectKind('elicitation', (snap.elicitation ?? []) as DecisionRequest[], fresh, prevArrived, now);
+        this.collectKind('fleet-ask', (snap.fleetAsk ?? []) as DecisionRequest[], fresh, prevArrived, now);
+        this.collectKind('plan-approval', (snap.planApproval ?? []) as DecisionRequest[], fresh, prevArrived, now);
+        this.collectKind('permission-prompt', (snap.permissionPrompt ?? []) as DecisionRequest[], fresh, prevArrived, now);
+        this.collectKind('a2ui-render', (snap.a2uiRender ?? []) as DecisionRequest[], fresh, prevArrived, now);
+        this.decisions = fresh;
+      })
+      .catch((_e: Object) => {
+        // agent offline — live events will catch us up later
+      });
+  }
+
+  private collectKind(kind: DecisionKind, list: DecisionRequest[],
+    out: PendingDecision[], prevArrived: Map<string, number>, now: number): void {
+    for (const req of list) {
+      const id = (req as DecisionReqId).id;
+      const arrivedAt = prevArrived.get(id) ?? now;
+      out.push({ kind, id, request: req, arrivedAt });
+    }
   }
 
   private statusColor(): string {
@@ -137,9 +217,22 @@ export struct MainShell {
   }
 
   @Builder
-  tabItem(key: string, icon: string, label: string) {
+  tabItem(key: string, icon: string, label: string, badge: number) {
     Column({ space: 2 }) {
-      Text(icon).fontSize(20)
+      Stack({ alignContent: Alignment.TopEnd }) {
+        Text(icon).fontSize(20)
+        if (badge > 0) {
+          Text(badge > 99 ? '99+' : `${badge}`)
+            .fontSize(9)
+            .fontColor('#ffffff')
+            .backgroundColor(this.tk().accent)
+            .borderRadius(8)
+            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+            .constraintSize({ minWidth: 14 })
+            .textAlign(TextAlign.Center)
+            .margin({ right: -8, top: -4 })
+        }
+      }
       Text(label)
         .fontSize(11)
         .fontColor(this.tab === key ? this.tk().accent : this.tk().textSecondary)
@@ -172,11 +265,11 @@ export struct MainShell {
   @Builder
   bottomBar() {
     Row() {
-      this.tabItem('decisions', '📥', t('决策'))
-      this.tabItem('tasks', '📋', t('任务'))
+      this.tabItem('decisions', '📥', t('决策'), this.decisions.length)
+      this.tabItem('tasks', '📋', t('任务'), 0)
       this.fab()
-      this.tabItem('wiki', '📚', t('知识库'))
-      this.tabItem('more', '⋯', t('更多'))
+      this.tabItem('wiki', '📚', t('知识库'), 0)
+      this.tabItem('more', '⋯', t('更多'), 0)
     }
     .width('100%')
     .height(60)
@@ -189,7 +282,13 @@ export struct MainShell {
       this.header()
       Stack() {
         if (this.tab === 'decisions') {
-          DecisionsView()
+          DecisionsView({
+            decisions: this.decisions,
+            client: this.client,
+            onAnswered: (id: string) => {
+              this.removeDecision(id);
+            },
+          })
         } else if (this.tab === 'tasks') {
           // Gate on `ready` so TasksView is only created once the relay client
           // exists — a plain (non-reactive) member wouldn't update if it were
