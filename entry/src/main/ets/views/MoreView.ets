@@ -1,5 +1,8 @@
+import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
 import { t, setLang } from '../common/I18n';
 import { ColorTokens, themeTokens, setThemeMode, ThemeMode } from '../common/Theme';
+import { registerForPush } from '../common/PushRegister';
 
 /// The "更多" tab: language + theme switchers (wired end-to-end), a re-pair entry,
 /// and an about block. Connection/notification rows fill in once the P2 relay
@@ -11,12 +14,39 @@ export struct MoreView {
   @StorageProp('themeMode') themeMode: string = 'system';
   @Prop connected: boolean = false;
   @Prop agentOnline: boolean = false;
+  @StorageProp('pushSubscribed') pushSubscribed: boolean = false;
+  @State private enablingPush: boolean = false;
   onRepair: () => void = () => {};
   onOpenUsage: () => void = () => {};
   onOpenRepo: () => void = () => {};
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private ctx(): common.UIAbilityContext {
+    return this.getUIContext().getHostContext() as common.UIAbilityContext;
+  }
+
+  private enablePush(): void {
+    if (this.enablingPush) {
+      return;
+    }
+    this.enablingPush = true;
+    registerForPush(this.ctx())
+      .then((state: string) => {
+        AppStorage.setOrCreate('pushSubscribed', state === 'subscribed');
+        if (state !== 'subscribed') {
+          promptAction.showToast({ message: t('尚未配对。请先扫码配对。') });
+        }
+      })
+      .catch((e: Object) => {
+        const msg = e instanceof Error ? (e as Error).message : `${e}`;
+        promptAction.showToast({ message: t('订阅失败：{0}', msg) });
+      })
+      .finally(() => {
+        this.enablingPush = false;
+      });
   }
 
   private connLabel(): string {
@@ -90,12 +120,33 @@ export struct MoreView {
         .width('100%')
 
         this.sectionTitle(t('连接与通知'))
-        Row() {
-          Text(t('桌面端')).fontSize(15).fontColor(this.tk().text).layoutWeight(1)
-          Row({ space: 6 }) {
-            Circle({ width: 8, height: 8 }).fill(this.connColor())
-            Text(this.connLabel()).fontSize(13).fontColor(this.tk().textSecondary)
+        Column() {
+          Row() {
+            Text(t('桌面端')).fontSize(15).fontColor(this.tk().text).layoutWeight(1)
+            Row({ space: 6 }) {
+              Circle({ width: 8, height: 8 }).fill(this.connColor())
+              Text(this.connLabel()).fontSize(13).fontColor(this.tk().textSecondary)
+            }
           }
+          .width('100%')
+          .padding({ top: 4, bottom: 4 })
+          Divider().color(this.tk().border).margin({ top: 10, bottom: 10 })
+          Row() {
+            Text(t('通知')).fontSize(15).fontColor(this.tk().text).layoutWeight(1)
+            if (this.pushSubscribed) {
+              Text(t('已开启')).fontSize(13).fontColor(this.tk().success)
+            } else {
+              Text(this.enablingPush ? t('订阅中…') : t('开启'))
+                .fontSize(13)
+                .fontColor('#ffffff')
+                .backgroundColor(this.tk().accent)
+                .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+                .borderRadius(6)
+                .onClick(() => this.enablePush())
+            }
+          }
+          .width('100%')
+          .padding({ top: 4, bottom: 4 })
         }
         .width('100%')
         .padding(14)
