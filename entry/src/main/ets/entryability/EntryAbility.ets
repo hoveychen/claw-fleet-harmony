@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { initTheme, setSystemDark } from '../common/Theme';
 import { initI18n } from '../common/I18n';
+import { selfTest } from '../common/RelayCrypto';
 
 const DOMAIN = 0x0000;
 const TAG = 'fleet';
@@ -19,6 +20,12 @@ export default class EntryAbility extends UIAbility {
     const deviceIsZh = (cfg.language ?? 'zh').toLowerCase().startsWith('zh');
     initI18n(deviceIsZh);
     initTheme(isDark(cfg.colorMode));
+    // One-shot relay-crypto byte-alignment check against the frozen vector; the
+    // verdict lands in hilog (grep 'crypto selfTest'). This is the only runtime
+    // proof that AES-GCM interops with the Rust/WebCrypto peers.
+    selfTest().then((verdict: string) => {
+      hilog.info(DOMAIN, TAG, 'crypto selfTest: %{public}s', verdict);
+    });
     this.captureLaunchRoute(want);
   }
 
