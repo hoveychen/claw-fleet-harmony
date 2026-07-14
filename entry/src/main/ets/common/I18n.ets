@@ -306,6 +306,11 @@ const ENTRIES: [string, string][] = [
   ['加载图片…', 'Loading image…'],
   ['图片加载失败，点按重试', 'Image failed to load — tap to retry'],
   ['{0} 张图片加载失败，点按重试', '{0} image(s) failed to load — tap to retry'],
+  ['已超时 · 会话已暂停', 'Timed out · session paused'],
+  ['等待超时，Fleet 已经掐掉那一轮并把问题留了下来。回复后会带着你的答复唤醒会话继续。',
+    'The wait timed out — Fleet cut that turn and kept the question. Your reply wakes the session and continues.'],
+  ['完整预览请在桌面端查看', 'Open the full preview on the desktop'],
+  ['Agent 干活时说的话', 'What the agent said while working'],
 
   // ── Composer ──
   ['默认模型', 'Default model'],

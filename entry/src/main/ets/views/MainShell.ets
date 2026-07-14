@@ -284,6 +284,7 @@ export struct MainShell {
         if (this.tab === 'decisions') {
           DecisionsView({
             decisions: this.decisions,
+            agentOnline: this.agentOnline,
             client: this.client,
             onAnswered: (id: string) => {
               this.removeDecision(id);
