@@ -14,6 +14,9 @@ import { MoreView } from './MoreView';
 import { SessionDetailView } from './SessionDetailView';
 import { NewSessionSheet } from './Composer';
 import { UsageView } from './UsageView';
+import { RepoView } from './RepoView';
+import { RepoDetailView } from './RepoDetailView';
+import { RepoSummary } from '../models/Types';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -57,6 +60,9 @@ export struct MainShell {
   @State private showNewSession: boolean = false;
   // The 账号与用量 overlay (opened from the More tab).
   @State private showUsage: boolean = false;
+  // The 仓库 list overlay + the selected-repo detail overlay above it.
+  @State private showRepo: boolean = false;
+  @State private repoDetail: RepoSummary | null = null;
   // Today's cumulative token/cost, polled while the desktop is online; shown in
   // the header and handed to the Usage page so it isn't recomputed there.
   @State private todayUsage: TodayUsage | null = null;
@@ -380,6 +386,26 @@ export struct MainShell {
           },
         })
       }
+      if (this.showRepo) {
+        RepoView({
+          client: this.client,
+          onBack: () => {
+            this.showRepo = false;
+          },
+          onOpenRepo: (repo: RepoSummary) => {
+            this.repoDetail = repo;
+          },
+        })
+      }
+      if (this.repoDetail !== null) {
+        RepoDetailView({
+          repo: this.repoDetail,
+          client: this.client,
+          onBack: () => {
+            this.repoDetail = null;
+          },
+        })
+      }
     }
     .width('100%')
     .height('100%')
@@ -435,6 +461,9 @@ export struct MainShell {
             agentOnline: this.agentOnline,
             onOpenUsage: () => {
               this.showUsage = true;
+            },
+            onOpenRepo: () => {
+              this.showRepo = true;
             },
           })
         }
