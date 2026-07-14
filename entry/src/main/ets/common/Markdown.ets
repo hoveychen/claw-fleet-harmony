@@ -3,8 +3,10 @@
 /// `Web` component is restricted, so we hand-parse a practical subset and render
 /// it with native Text/Span/Column. Supported: headings (#/##/###), paragraphs,
 /// fenced code blocks (```), unordered (- / *) and ordered (1.) lists, and the
-/// inline runs **bold**, *italic* / _italic_, `code`, and [text](url) (shown as
-/// accent-coloured text — link navigation is out of scope on mobile).
+/// inline runs **bold**, *italic* / _italic_, `code`, and [text](url) (accent-
+/// coloured). A `wiki:<slug>` link (produced by WikiDocView from `[[slug]]`) is
+/// rendered underlined and tappable, firing `onWikiLink(slug)` for in-app
+/// navigation; every other href stays non-navigable accent text.
 ///
 /// ArkTS shape notes: all parsing lives in plain module functions (a @Builder
 /// body may hold only UI syntax — no `const`/loops); the renderer @Builder walks
@@ -19,6 +21,7 @@ export interface MdSpan {
   italic: boolean;
   code: boolean;
   link: boolean;
+  href: string;
 }
 
 export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol';
@@ -30,13 +33,13 @@ export interface MdBlock {
   ordinal: number;
 }
 
-function mkSpan(text: string, bold: boolean, italic: boolean, code: boolean, link: boolean): MdSpan {
-  const s: MdSpan = { text, bold, italic, code, link };
+function mkSpan(text: string, bold: boolean, italic: boolean, code: boolean, link: boolean, href: string): MdSpan {
+  const s: MdSpan = { text, bold, italic, code, link, href };
   return s;
 }
 
 function plainSpan(text: string): MdSpan {
-  return mkSpan(text, false, false, false, false);
+  return mkSpan(text, false, false, false, false, '');
 }
 
 /// Leading `N. ` ordered-list marker → index of the item text (after the marker),
@@ -81,7 +84,7 @@ export function parseInline(text: string): MdSpan[] {
           spans.push(plainSpan(plain));
           plain = '';
         }
-        spans.push(mkSpan(text.substring(i + 2, close), true, false, false, false));
+        spans.push(mkSpan(text.substring(i + 2, close), true, false, false, false, ''));
         i = close + 2;
         continue;
       }
@@ -92,7 +95,7 @@ export function parseInline(text: string): MdSpan[] {
           spans.push(plainSpan(plain));
           plain = '';
         }
-        spans.push(mkSpan(text.substring(i + 1, close), false, false, true, false));
+        spans.push(mkSpan(text.substring(i + 1, close), false, false, true, false, ''));
         i = close + 1;
         continue;
       }
@@ -105,7 +108,8 @@ export function parseInline(text: string): MdSpan[] {
             spans.push(plainSpan(plain));
             plain = '';
           }
-          spans.push(mkSpan(text.substring(i + 1, rb), false, false, false, true));
+          // Capture the href so a `wiki:` link stays navigable (see MarkdownView).
+          spans.push(mkSpan(text.substring(i + 1, rb), false, false, false, true, text.substring(rb + 2, rp)));
           i = rp + 1;
           continue;
         }
@@ -117,7 +121,7 @@ export function parseInline(text: string): MdSpan[] {
           spans.push(plainSpan(plain));
           plain = '';
         }
-        spans.push(mkSpan(text.substring(i + 1, close), false, true, false, false));
+        spans.push(mkSpan(text.substring(i + 1, close), false, true, false, false, ''));
         i = close + 1;
         continue;
       }
@@ -215,6 +219,9 @@ export struct MarkdownView {
   @Prop content: string = '';
   @Prop mdFontSize: number = 14;
   @Prop color: string = '';
+  /// Fired when a `wiki:<slug>` link span is tapped (the raw slug, no scheme).
+  /// No-op by default — only WikiDocView wires it for `[[slug]]` navigation.
+  onWikiLink: (slug: string) => void = () => {};
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
@@ -222,6 +229,12 @@ export struct MarkdownView {
 
   private baseColor(): string {
     return this.color.length > 0 ? this.color : this.tk().textSecondary;
+  }
+
+  /// A tappable in-app wiki link (as opposed to an external http link, which
+  /// stays plain accent text).
+  private isWikiLink(s: MdSpan): boolean {
+    return s.link && s.href.startsWith('wiki:');
   }
 
   private headingSize(kind: MdBlockKind): number {
@@ -271,6 +284,12 @@ export struct MarkdownView {
               .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
               .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
               .fontColor(this.spanColor(s))
+              .decoration({ type: this.isWikiLink(s) ? TextDecorationType.Underline : TextDecorationType.None })
+              .onClick(() => {
+                if (this.isWikiLink(s)) {
+                  this.onWikiLink(s.href.substring(5));
+                }
+              })
           })
         }
         .fontSize(this.mdFontSize)
@@ -285,6 +304,12 @@ export struct MarkdownView {
             .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
             .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
             .fontColor(this.spanColor(s))
+            .decoration({ type: this.isWikiLink(s) ? TextDecorationType.Underline : TextDecorationType.None })
+            .onClick(() => {
+              if (this.isWikiLink(s)) {
+                this.onWikiLink(s.href.substring(5));
+              }
+            })
         })
       }
       .fontSize(this.mdFontSize)
