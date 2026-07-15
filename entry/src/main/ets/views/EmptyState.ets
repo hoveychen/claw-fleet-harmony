@@ -21,8 +21,17 @@ export struct EmptyState {
   @Prop spin: boolean = false;
   @Prop compact: boolean = false;
 
+  // Fade-in on mount, mirroring mobile-web's EmptyState fadeIn.
+  @State private appeared: number = 0;
+
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  aboutToAppear(): void {
+    animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
+      this.appeared = 1;
+    });
   }
 
   private pad(): Padding {
@@ -30,6 +39,10 @@ export struct EmptyState {
       return { top: 32, bottom: 32, left: 24, right: 24 };
     }
     return { left: 32, right: 32 };
+  }
+
+  private chipSize(): number {
+    return this.compact ? 48 : 60;
   }
 
   build() {
@@ -40,26 +53,36 @@ export struct EmptyState {
           .height(this.compact ? 30 : 40)
           .color(this.tk().accent)
       } else if (this.iconRes !== undefined) {
-        Icon({ src: this.iconRes, iconSize: this.compact ? 34 : 44, color: this.tk().textDim })
+        // Round icon chip: subtle base + border + soft shadow (GitHub blankslate).
+        Stack() {
+          Icon({ src: this.iconRes, iconSize: this.compact ? 26 : 30, color: this.tk().textSecondary })
+        }
+        .width(this.chipSize())
+        .height(this.chipSize())
+        .borderRadius(this.chipSize() / 2)
+        .backgroundColor(this.tk().bgInput)
+        .border({ width: 1, color: this.tk().border })
+        .shadow({ radius: 8, color: 'rgba(0,0,0,0.12)', offsetX: 0, offsetY: 2 })
       } else if (this.icon.length > 0) {
         Text(this.icon).fontSize(this.compact ? 34 : 46)
       }
       Text(this.title)
-        .fontSize(this.compact ? 15 : 17)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(this.compact ? 14 : 15)
+        .fontWeight(600)
         .fontColor(this.tk().text)
         .textAlign(TextAlign.Center)
       if (this.subtitle.length > 0) {
         Text(this.subtitle)
-          .fontSize(14)
+          .fontSize(13)
           .fontColor(this.tk().textSecondary)
           .textAlign(TextAlign.Center)
-          .lineHeight(21)
+          .lineHeight(19)
       }
     }
     .width('100%')
     .height(this.compact ? 'auto' : '100%')
     .padding(this.pad())
     .justifyContent(FlexAlign.Center)
+    .opacity(this.appeared)
   }
 }
