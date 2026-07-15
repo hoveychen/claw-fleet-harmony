@@ -1860,7 +1860,12 @@ struct QuestionsCard {
       }
       MarkdownView({ content: stripTtsDivider(q.question), color: this.tk().text })
       if (this.isFleetAsk && q.html && (q.html as string).length > 0) {
-        HtmlView({ html: q.html as string })
+        HtmlView({
+          html: q.html as string,
+          requestId: this.request.id,
+          qidx: this.qi(),
+          client: this.client,
+        })
       }
       // fleet-ask images: render the gallery whenever present so no image is
       // lost (html img refs use fleet-decision:// on desktop and don't resolve
