@@ -84,6 +84,10 @@ const ENTRIES: [string, string][] = [
   ['扫码取消或失败。', 'Scan cancelled or failed.'],
   ['扫码配对', 'Scan to pair'],
   ['重新扫码配对', 'Re-scan to pair'],
+  // ── 免扫码试用模式 ──
+  ['免扫码体验(试用模式)', 'Try it without scanning (demo mode)'],
+  ['试用模式', 'Demo mode'],
+  ['退出试用 / 扫码连接桌面端', 'Exit demo / scan to connect desktop'],
   ['刷新推送订阅', 'Refresh push subscription'],
   ['已连接 · {0}', 'Connected · {0}'],
   ['未配对', 'Not paired'],

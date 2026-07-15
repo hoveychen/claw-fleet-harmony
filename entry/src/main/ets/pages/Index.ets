@@ -19,6 +19,10 @@ struct Index {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @State private paired: boolean = false;
   @State private checking: boolean = true;
+  // No-scan trial mode: the shell runs against MockRelayClient's simulated data
+  // instead of a live relay. Entered from the gate's 「免扫码体验」 button; exited
+  // via the 更多 page. Independent of `paired` (trial needs no pairing secret).
+  @State private trial: boolean = false;
   // Relay auth failure on a paired launch (secret reset on the desktop). Mirrors
   // mobile-web's authError page: an explicit "清除本机密钥" exit rather than a
   // dead status string.
@@ -123,17 +127,29 @@ struct Index {
         .height('100%')
         .justifyContent(FlexAlign.Center)
         .backgroundColor(this.tk().bg)
-      } else if (!this.paired) {
-        GateView({ onPaired: () => {
-          this.authError = '';
-          this.paired = true;
-        } })
+      } else if (!this.paired && !this.trial) {
+        GateView({
+          onPaired: () => {
+            this.authError = '';
+            this.paired = true;
+          },
+          onTrial: () => {
+            this.trial = true;
+          },
+        })
       } else if (this.authError.length > 0) {
         this.authErrorPage()
       } else {
         MainShell({
+          trial: this.trial,
           onRepair: () => {
-            this.doRepair();
+            // In trial mode there is no pairing secret to clear — 退出试用 just
+            // returns to the gate; a real pairing clears the stored secret.
+            if (this.trial) {
+              this.trial = false;
+            } else {
+              this.doRepair();
+            }
           },
           onNewSession: () => {
             // New-session composer lands in P6.
