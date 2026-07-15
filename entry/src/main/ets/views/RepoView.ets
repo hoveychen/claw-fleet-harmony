@@ -4,7 +4,7 @@ import { RelayClient } from '../common/Relay';
 import { RepoSummary } from '../models/Types';
 import { EmptyState } from './EmptyState';
 import { Icon } from '../common/Icon';
-import { CAPSULE_INSET_RIGHT } from '../common/SafeArea';
+import { CAPSULE_INSET_RIGHT, HEADER_HEIGHT } from '../common/SafeArea';
 
 /// 仓库列表 — the native port of mobile-web/src/views/RepoView.tsx. Every git repo
 /// reachable from a session workspace, each with a "loose-ends" health tag
@@ -64,7 +64,7 @@ export struct RepoView {
       Text('⟳').fontSize(18).fontColor(this.tk().text).onClick(() => this.refresh())
     }
     .width('100%')
-    .height(48)
+    .height(HEADER_HEIGHT)
     .padding({ left: 12, right: CAPSULE_INSET_RIGHT })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })

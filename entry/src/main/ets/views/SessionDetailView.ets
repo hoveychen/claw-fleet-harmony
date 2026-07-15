@@ -33,7 +33,7 @@ import { SessionInfo, SessionStatus, RawMessage, ContentBlock, LiveThinking } fr
 import { ResumeComposer } from './Composer';
 import { Icon } from '../common/Icon';
 import { CopyButton } from '../common/CopyButton';
-import { CAPSULE_INSET_RIGHT } from '../common/SafeArea';
+import { CAPSULE_INSET_RIGHT, HEADER_HEIGHT } from '../common/SafeArea';
 
 const TAIL_POLL_MS = 2500;
 const TAIL_INITIAL = 120;
@@ -499,7 +499,7 @@ export struct SessionDetailView {
       }
     }
     .width('100%')
-    .height(52)
+    .height(HEADER_HEIGHT)
     .padding({ left: 12, right: CAPSULE_INSET_RIGHT })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })

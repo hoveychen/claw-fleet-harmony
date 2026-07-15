@@ -19,7 +19,7 @@ import { RepoDetailView } from './RepoDetailView';
 import { WikiDocView } from './WikiDocView';
 import { RepoSummary, WikiDoc } from '../models/Types';
 import { Icon } from '../common/Icon';
-import { CAPSULE_INSET_RIGHT } from '../common/SafeArea';
+import { CAPSULE_INSET_RIGHT, HEADER_HEIGHT } from '../common/SafeArea';
 
 /// Every DecisionRequest variant carries a string `id`; this lets us read it off
 /// the opaque business payload without discriminating the union.
@@ -294,7 +294,7 @@ export struct MainShell {
       }
     }
     .width('100%')
-    .height(48)
+    .height(HEADER_HEIGHT)
     .padding({ left: 16, right: CAPSULE_INSET_RIGHT })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })

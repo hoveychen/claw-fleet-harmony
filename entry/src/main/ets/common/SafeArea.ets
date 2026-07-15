@@ -17,6 +17,15 @@ const TAG = 'fleet';
 /// header title (left / centered) never reaches the capsule, so it is untouched.
 export const CAPSULE_INSET_RIGHT: number = 104;
 
+/// Uniform top-header height (vp) so header content vertically centers on the
+/// system capsule (close / more buttons), which floats a little lower than a
+/// default-height header's text baseline. On-device (density 3.25): content root
+/// is framework-inset to screen y=133, the capsule center sits at screen y≈223 —
+/// i.e. content-relative ≈90px ≈27.7vp. A 56vp header (content centered) puts the
+/// text center at ≈28vp, aligning it with the capsule and dropping the bottom
+/// divider a touch lower, as requested. Applied to all 6 top headers.
+export const HEADER_HEIGHT: number = 56;
+
 /// App-wide bottom safe-area inset (vp), published to AppStorage as `safeBottom`.
 ///
 /// dumpLayout shows the atomic service content root is framework-inset on TOP only
