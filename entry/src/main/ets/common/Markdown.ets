@@ -2,9 +2,11 @@
 /// react-markdown. ArkTS has no markdown engine and the atomic-service ArkWeb
 /// `Web` component is restricted, so we hand-parse a practical subset and render
 /// it with native Text/Span/Column. Supported: headings (#/##/###), paragraphs,
-/// fenced code blocks (```), unordered (- / *) and ordered (1.) lists, and the
-/// inline runs **bold**, *italic* / _italic_, `code`, and [text](url) (accent-
-/// coloured). A `wiki:<slug>` link (produced by WikiDocView from `[[slug]]`) is
+/// fenced code blocks (```), unordered (- / *) and ordered (1.) lists, GFM task
+/// lists (- [ ] / - [x]), block quotes (>), GFM pipe tables (with :--: column
+/// alignment), thematic breaks (--- / *** / ___), and the inline runs **bold**,
+/// *italic* / _italic_, `code`, ~~strike~~, and [text](url) (accent-coloured).
+/// A `wiki:<slug>` link (produced by WikiDocView from `[[slug]]`) is
 /// rendered underlined and tappable, firing `onWikiLink(slug)` for in-app
 /// navigation; every other href stays non-navigable accent text.
 ///
@@ -25,7 +27,7 @@ export interface MdSpan {
   strike: boolean;
 }
 
-export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table' | 'quote' | 'li-task';
+export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table' | 'quote' | 'li-task' | 'hr';
 
 /// A GFM pipe table. `aligns[c]` is the column alignment (-1 left / 0 centre /
 /// 1 right); `header` is the header row's cells, each a run of inline spans;
@@ -156,6 +158,31 @@ function tableStartsAt(lines: string[], i: number): boolean {
     && isTableSeparator(lines[i + 1].trim());
 }
 
+/// A thematic break — 3+ of the same `-`/`*`/`_` (spaces allowed between),
+/// e.g. `---`, `***`, `_ _ _`. A table delimiter never reaches here (it always
+/// carries a `|` and is consumed by the table path first).
+function isHr(trimmed: string): boolean {
+  if (trimmed.length < 3) {
+    return false;
+  }
+  const c0 = trimmed.charAt(0);
+  if (c0 !== '-' && c0 !== '*' && c0 !== '_') {
+    return false;
+  }
+  let count = 0;
+  let i = 0;
+  while (i < trimmed.length) {
+    const c = trimmed.charAt(i);
+    if (c === c0) {
+      count++;
+    } else if (c !== ' ') {
+      return false;
+    }
+    i++;
+  }
+  return count >= 3;
+}
+
 function isBlockStart(trimmed: string): boolean {
   return trimmed.length === 0
     || trimmed.startsWith('```')
@@ -164,6 +191,7 @@ function isBlockStart(trimmed: string): boolean {
     || trimmed.startsWith('* ')
     || trimmed.startsWith('> ')
     || trimmed === '>'
+    || isHr(trimmed)
     || orderedMarker(trimmed) >= 0;
 }
 
@@ -296,6 +324,12 @@ export function parseBlocks(md: string): MdBlock[] {
       }
       const table: MdTable = { aligns, header, rows };
       out.push({ kind: 'table', spans: [], code: '', ordinal: 0, table });
+      olCounter = 0;
+      continue;
+    }
+    if (isHr(trimmed)) {
+      out.push({ kind: 'hr', spans: [], code: '', ordinal: 0 });
+      i++;
       olCounter = 0;
       continue;
     }
@@ -485,6 +519,11 @@ export struct MarkdownView {
         .padding(8)
         .borderRadius(6)
         .backgroundColor(this.tk().bgInput)
+    } else if (b.kind === 'hr') {
+      Divider()
+        .strokeWidth(1)
+        .color(this.tk().border)
+        .margin({ top: 2, bottom: 2 })
     } else if (b.kind === 'quote') {
       Text() {
         ForEach(b.spans, (s: MdSpan) => {
