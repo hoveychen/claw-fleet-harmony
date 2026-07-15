@@ -282,7 +282,7 @@ export struct MainShell {
             .fontSize(14)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
-          Text(this.fmtTokens(this.todayUsage.outputTokens))
+          Text(this.fmtTokens(this.todayUsage.inputTokens + this.todayUsage.outputTokens))
             .fontSize(11)
             .fontColor(this.tk().textDim)
         }

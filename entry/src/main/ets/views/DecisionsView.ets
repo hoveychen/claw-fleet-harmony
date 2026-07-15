@@ -116,6 +116,43 @@ interface GuardAnalyzeParams {
 interface GuardAnalyzeResp {
   analysis: string;
 }
+interface GuardTailParams {
+  path: string;
+  n: number;
+}
+
+/// Last non-sidechain assistant message's text, for guard AI-analysis context.
+/// Mirrors mobile-web DecisionsView.tsx `lastAssistantText`.
+function lastAssistantText(rows: RawMessage[]): string {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const msg = rows[i];
+    if (msg.type !== 'assistant' || msg.isSidechain === true) {
+      continue;
+    }
+    const content: string | ContentBlock[] | undefined = msg.message?.content;
+    if (typeof content === 'string') {
+      const trimmed = content.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+      continue;
+    }
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    const parts: string[] = [];
+    for (const b of content) {
+      if (b.type === 'text' && b.text !== undefined && b.text.trim().length > 0) {
+        parts.push(b.text);
+      }
+    }
+    const text = parts.join('\n\n');
+    if (text.length > 0) {
+      return text;
+    }
+  }
+  return '';
+}
 
 // Relay request/response shapes for a decision-card image asset (decision_asset).
 interface AssetParams {
@@ -566,6 +603,7 @@ export struct DecisionsView {
           GuardCard({
             request: d.request as GuardRequest,
             client: this.client,
+            jsonlPath: this.sessionFor((d.request as GuardRequest).sessionId)?.jsonlPath ?? '',
             onAnswered: this.onAnswered,
           })
         } else if (d.kind === 'permission-prompt') {
@@ -654,6 +692,7 @@ struct GuardCard {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   request: GuardRequest = {} as GuardRequest;
   client: RelayClient | null = null;
+  jsonlPath: string = '';
   onAnswered: (id: string) => void = () => {};
 
   @State private reason: string = '';
@@ -672,16 +711,29 @@ struct GuardCard {
       this.analysis = 'unavailable';
       return;
     }
-    // Context is best-effort; the mobile client hasn't loaded the transcript
-    // tail here, so we send the command alone (the desktop still classifies it).
-    const params: GuardAnalyzeParams = { command: this.request.command, context: '', lang: getLang() };
-    client.request<GuardAnalyzeResp>('guard_analyze', params, 40000)
-      .then((r: GuardAnalyzeResp) => {
-        this.analysis = r.analysis.length > 0 ? r.analysis : 'unavailable';
-      })
-      .catch((_e: Object) => {
-        this.analysis = 'unavailable';
-      });
+    this.runAnalysis(client);
+  }
+
+  private async runAnalysis(client: RelayClient): Promise<void> {
+    // Best-effort transcript context: tail the last 20 messages and pass the
+    // most recent assistant text so the desktop LLM classifies with context.
+    let context = '';
+    if (this.jsonlPath.length > 0) {
+      try {
+        const tp: GuardTailParams = { path: this.jsonlPath, n: 20 };
+        const rows = await client.request<RawMessage[]>('tail', tp, 40000);
+        context = lastAssistantText(rows ?? []);
+      } catch (_e) {
+        // context is best-effort
+      }
+    }
+    const params: GuardAnalyzeParams = { command: this.request.command, context, lang: getLang() };
+    try {
+      const r = await client.request<GuardAnalyzeResp>('guard_analyze', params, 40000);
+      this.analysis = r.analysis.length > 0 ? r.analysis : 'unavailable';
+    } catch (_e) {
+      this.analysis = 'unavailable';
+    }
   }
 
   private prefixes(): string[] {

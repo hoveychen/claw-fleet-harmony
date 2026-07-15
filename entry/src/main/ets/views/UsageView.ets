@@ -256,7 +256,7 @@ export struct UsageView {
             .fontSize(24)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
-          Text(t('{0} 输出 token', fmtTokens(this.todayUsage.outputTokens)))
+          Text(t('{0} token', fmtTokens(this.todayUsage.inputTokens + this.todayUsage.outputTokens)))
             .fontSize(13)
             .fontColor(this.tk().textSecondary)
         }

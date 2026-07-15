@@ -194,7 +194,9 @@ export type SessionStatus =
   | 'waitingInput'
   | 'active'
   | 'idle'
-  | 'rateLimited';
+  | 'rateLimited'
+  | 'serverErrored'
+  | 'stuck';
 
 export interface TodoSummary {
   completed: number;
@@ -387,6 +389,7 @@ export interface WorkflowTree {
 /// Today's cumulative token/cost counter (header widget).
 export interface TodayUsage {
   date: string;
+  inputTokens: number;
   outputTokens: number;
   costUsd: number;
   agentCostUsd: number;

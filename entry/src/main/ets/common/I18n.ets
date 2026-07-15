@@ -404,6 +404,7 @@ const ENTRIES: [string, string][] = [
   ['桌面端离线，拿不到今日用量。', 'Desktop offline — today\'s usage is unavailable.'],
   ['今日累计', 'Today'],
   ['{0} 输出 token', '{0} output tokens'],
+  ['{0} token', '{0} token'],
   ['会话花费', 'Agent sessions'],
   ['Fleet 自身花费', 'Fleet itself'],
   ['{0} 个会话', '{0} sessions'],

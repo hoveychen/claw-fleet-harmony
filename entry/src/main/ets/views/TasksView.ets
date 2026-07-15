@@ -22,7 +22,7 @@ import { loadDraftRaw, saveDraftRaw } from '../common/Draft';
 
 const WORKING: SessionStatus[] = ['thinking', 'executing', 'streaming', 'processing', 'delegating'];
 const LIVE: SessionStatus[] =
-  ['thinking', 'executing', 'streaming', 'processing', 'delegating', 'waitingInput', 'active', 'rateLimited'];
+  ['thinking', 'executing', 'streaming', 'processing', 'delegating', 'waitingInput', 'active', 'rateLimited', 'serverErrored'];
 
 /// Pseudo-workspaces pinned above the real directories, mirroring the desktop
 /// launchpad. "" is "all"; every real value is an absolute path, so these bare
@@ -44,7 +44,7 @@ function statusTone(status: SessionStatus): string {
   if (status === 'active') {
     return 'active';
   }
-  if (status === 'rateLimited') {
+  if (status === 'rateLimited' || status === 'serverErrored') {
     return 'error';
   }
   return '';
