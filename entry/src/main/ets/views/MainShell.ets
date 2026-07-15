@@ -257,8 +257,13 @@ export struct MainShell {
   /// confirms. If the answer frame was actually lost, reconcileDecisions lets the
   /// card back after ANSWER_GRACE_MS. Peer of App.tsx's markAnswered.
   private markAnswered(id: string): void {
+    // Record the in-flight answer FIRST, then drop the card by filtering
+    // directly — must NOT go through removeDecision(), which deletes answeredAt
+    // and would wipe the very suppression we just set, letting the 3s reconcile
+    // resurrect the card before the desktop confirms (looks like "提交没反应").
+    // Mirrors mobile-web App.tsx markAnswered (inline filter, not removeDecision).
     this.answeredAt.set(id, Date.now());
-    this.removeDecision(id);
+    this.decisions = this.decisions.filter((d: PendingDecision) => d.id !== id);
   }
 
   private removeDecision(id: string): void {
@@ -578,18 +583,27 @@ export struct MainShell {
       this.header()
       Stack() {
         if (this.tab === 'decisions') {
-          DecisionsView({
-            decisions: this.decisions,
-            agentOnline: this.agentOnline,
-            sessions: this.sessions,
-            client: this.client,
-            onAnswered: (id: string) => {
-              this.markAnswered(id);
-            },
-            onOpenSession: (s: SessionInfo) => {
-              this.selectedSession = s;
-            },
-          })
+          // Gate on `ready` for the SAME reason as TasksView below: `client` is a
+          // plain (non-reactive) member, so if DecisionsView mounts before the
+          // relay client exists it captures `null` and never updates — every
+          // card's `client` stays null and `submitAnswer` silently swallows the
+          // answer (the original "提交了但没生效" bug). Since `tab` defaults to
+          // 'decisions', this view mounts FIRST, before startRelay sets client —
+          // which is exactly why decisions were broken while tasks worked.
+          if (this.ready) {
+            DecisionsView({
+              decisions: this.decisions,
+              agentOnline: this.agentOnline,
+              sessions: this.sessions,
+              client: this.client,
+              onAnswered: (id: string) => {
+                this.markAnswered(id);
+              },
+              onOpenSession: (s: SessionInfo) => {
+                this.selectedSession = s;
+              },
+            })
+          }
         } else if (this.tab === 'tasks') {
           // Gate on `ready` so TasksView is only created once the relay client
           // exists — a plain (non-reactive) member wouldn't update if it were
