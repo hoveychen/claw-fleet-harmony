@@ -7,25 +7,19 @@
 /// Contract match with mobile-web: the desktop shows this html in an
 /// `<iframe sandbox="">` (no scripts, no same-origin). We mirror that by loading
 /// JavaScript-disabled, with our own theme-coloured wrapper stylesheet injected
-/// so tables / code / quotes read consistently in light and dark. Content height
-/// is measured after load via `getPageHeight()` (no JS needed) so the Web sizes
-/// to its content and never traps card scroll gestures behind an inner scroller.
+/// so tables / code / quotes read consistently in light and dark. The Web sizes
+/// to its content via `WebLayoutMode.FIT_CONTENT` (ArkWeb's auto-height mode) so
+/// it never traps card scroll gestures behind an inner scroller — a manual
+/// getPageHeight() + fixed initial height deadlocks (a 1px-tall Web never paints,
+/// so onPageEnd never fires to grow it), which an on-device spike confirmed.
 
 import webview from '@ohos.web.webview';
-import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ColorTokens, themeTokens } from './Theme';
-
-const DOMAIN = 0x0000;
-
-/// Hard cap so a pathologically tall preview can't make the card unusable; past
-/// this the Web falls back to its own internal scroll.
-const MAX_HEIGHT_VP = 480;
 
 @Component
 export struct HtmlView {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @Prop html: string = '';
-  @State private webHeight: number = 1;
   private controller: webview.WebviewController = new webview.WebviewController();
 
   private tk(): ColorTokens {
@@ -68,19 +62,7 @@ export struct HtmlView {
       .onlineImageAccess(false)
       .backgroundColor(Color.Transparent)
       .overScrollMode(OverScrollMode.NEVER)
+      .layoutMode(WebLayoutMode.FIT_CONTENT)
       .width('100%')
-      .height(this.webHeight)
-      .onPageEnd(() => {
-        // getPageHeight() returns content height in px and needs no JavaScript,
-        // so it works with javaScriptAccess(false). Convert to vp and cap.
-        try {
-          const h = px2vp(this.controller.getPageHeight());
-          if (h > 0) {
-            this.webHeight = h > MAX_HEIGHT_VP ? MAX_HEIGHT_VP : h;
-          }
-        } catch (e) {
-          hilog.warn(DOMAIN, 'HtmlView', 'getPageHeight failed: %{public}s', JSON.stringify(e));
-        }
-      })
   }
 }
