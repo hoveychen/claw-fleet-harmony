@@ -279,8 +279,8 @@ export struct MainShell {
       if (this.todayUsage !== null) {
         Row({ space: 4 }) {
           Text(`$${this.todayUsage.costUsd.toFixed(2)}`)
-            .fontSize(12)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
           Text(this.fmtTokens(this.todayUsage.outputTokens))
             .fontSize(11)
@@ -331,7 +331,13 @@ export struct MainShell {
 
   @Builder
   fab() {
-    Column() {
+    // iPhone 风格凸起圆形动作按钮：圆钮浮在导航栏之上，下方带「新会话」标签。
+    Stack({ alignContent: Alignment.Bottom }) {
+      Text(t('新会话'))
+        .fontSize(10.5)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.tk().accent)
+        .margin({ bottom: 6 })
       Stack() {
         Icon({ src: $r('app.media.ic_plus'), iconSize: 24, color: '#ffffff' })
       }
@@ -339,10 +345,11 @@ export struct MainShell {
       .height(46)
       .borderRadius(23)
       .backgroundColor(this.tk().accent)
+      .shadow({ radius: 10, color: 'rgba(0,0,0,0.28)', offsetX: 0, offsetY: 3 })
+      .offset({ y: -18 })
     }
     .layoutWeight(1)
     .height('100%')
-    .justifyContent(FlexAlign.Center)
     .onClick(() => {
       this.showNewSession = true;
     })
