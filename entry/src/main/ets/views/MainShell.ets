@@ -1,3 +1,4 @@
+import { gzipSelfTest, gzipSupported } from '../common/Gzip';
 import { common } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
 import { ColorTokens, themeTokens } from '../common/Theme';
@@ -155,7 +156,7 @@ export struct MainShell {
       label: deviceLabel(),
       platform: DEVICE_PLATFORM,
       pushSubscribed,
-      supportsGzip: false,
+      supportsGzip: gzipSupported(),
       supportsBinary: false,
     };
   }
@@ -198,6 +199,9 @@ export struct MainShell {
         this.onAuthError(message);
       },
     };
+    // Prove inflate works before the first hello advertises supportsGzip —
+    // hellos repeat every 15 s, so a late PASS still upgrades the channel.
+    void gzipSelfTest();
     this.client = new RelayClient(pairing.relayUrl, pairing.secret, handlers, () => this.deviceInfo());
     this.client.connect();
     this.ready = true;
