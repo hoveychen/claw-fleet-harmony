@@ -4,6 +4,7 @@ import { t, getLang } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
+import { HtmlView } from '../common/HtmlView';
 import {
   PendingDecision, SessionInfo,
   GuardRequest, PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest, FleetAskRequest,
@@ -1859,12 +1860,11 @@ struct QuestionsCard {
       }
       MarkdownView({ content: stripTtsDivider(q.question), color: this.tk().text })
       if (this.isFleetAsk && q.html && (q.html as string).length > 0) {
-        Text(t('完整预览请在桌面端查看'))
-          .fontSize(12).fontColor(this.tk().textDim).width('100%')
-          .padding(8).borderRadius(6).backgroundColor(this.tk().bgInput)
+        HtmlView({ html: q.html as string })
       }
       // fleet-ask images: render the gallery whenever present so no image is
-      // lost (html, if any, is degraded to the note above rather than rendered).
+      // lost (html img refs use fleet-decision:// on desktop and don't resolve
+      // in the on-device Web, so the gallery below stays the source of truth).
       ForEach(q.images ?? [], (img: FleetAskImage) => {
         DecisionImage({
           requestId: this.request.id,
