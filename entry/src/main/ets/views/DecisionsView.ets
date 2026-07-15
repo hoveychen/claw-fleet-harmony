@@ -8,6 +8,7 @@ import {
   PendingDecision, SessionInfo,
   GuardRequest, PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest, FleetAskRequest,
   FleetAskQuestion, ElicitationOption, FleetAskFormField, FleetAskImage, CommandView, CommandLeaf,
+  CmdConnector, NestedScript,
   RawMessage, ContentBlock,
 } from '../models/Types';
 import { EmptyState } from './EmptyState';
@@ -840,14 +841,10 @@ struct GuardCard {
 
   build() {
     Column({ space: 10 }) {
-      Text(this.request.command)
-        .fontSize(13)
-        .fontColor(this.tk().text)
-        .fontFamily('monospace')
-        .width('100%')
-        .padding(10)
-        .borderRadius(8)
-        .backgroundColor(this.tk().bgInput)
+      StructuredCommandView({
+        command: this.request.command,
+        view: this.request.structuredCommand ?? null,
+      })
       if (this.request.riskTags.length > 0) {
         Flex({ wrap: FlexWrap.Wrap }) {
           ForEach(this.request.riskTags, (tag: string) => {
@@ -1236,6 +1233,166 @@ struct A2uiCard {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+  }
+}
+
+// ── structured command AST (guard card) ─────────────────────────────────────
+// Mobile port of the desktop StructuredCommandView: one row per executable leaf,
+// connector badges between rows, "audit" badge on triggering leaves, nested
+// scripts (bash -c / eval / …) indented recursively.
+
+function connectorSymbol(c: CmdConnector): string {
+  if (c === 'and') {
+    return '&&';
+  }
+  if (c === 'or') {
+    return '||';
+  }
+  if (c === 'pipe') {
+    return '|';
+  }
+  return ';';
+}
+
+function nestedLabelKey(kind: string): string {
+  if (kind === 'bash-c') {
+    return 'bash -c 内嵌脚本';
+  }
+  if (kind === 'sh-c') {
+    return 'sh -c 内嵌脚本';
+  }
+  if (kind === 'zsh-c') {
+    return 'zsh -c 内嵌脚本';
+  }
+  if (kind === 'python-c') {
+    return 'python -c 内嵌代码';
+  }
+  if (kind === 'node-e') {
+    return 'node -e 内嵌代码';
+  }
+  if (kind === 'eval') {
+    return 'eval 内嵌脚本';
+  }
+  return '内嵌脚本';
+}
+
+function isOpaqueScript(kind: string): boolean {
+  return kind === 'python-c' || kind === 'node-e';
+}
+
+@Component
+struct StructuredCommandView {
+  @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  command: string = '';
+  view: CommandView | null = null;
+
+  private tk(): ColorTokens {
+    return themeTokens(this.resolvedTheme);
+  }
+
+  private visibleArgv(leaf: CommandLeaf): string[] {
+    // When a leaf carries a nested script the last argv entry is the raw script
+    // itself — the nested block renders it, so drop it here.
+    return (leaf.nested !== undefined && leaf.nested !== null && leaf.argv.length > 0)
+      ? leaf.argv.slice(0, leaf.argv.length - 1)
+      : leaf.argv;
+  }
+
+  private leafIndices(v: CommandView): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < v.leaves.length; i++) {
+      out.push(i);
+    }
+    return out;
+  }
+
+  private tokenIndices(n: number): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push(i);
+    }
+    return out;
+  }
+
+  @Builder
+  nestedBlock(n: NestedScript) {
+    Column({ space: 4 }) {
+      Text(t(nestedLabelKey(n.kind)))
+        .fontSize(11).fontColor(this.tk().textDim).width('100%')
+      if (isOpaqueScript(n.kind)) {
+        Text(n.raw)
+          .fontSize(12).fontColor(this.tk().textSecondary).fontFamily('monospace').width('100%')
+      } else {
+        StructuredCommandView({ command: '', view: n.view })
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 10, top: 6 })
+    .margin({ top: 4 })
+    .border({ width: { left: 2 }, color: this.tk().border })
+  }
+
+  @Builder
+  leafRow(leaf: CommandLeaf) {
+    Column({ space: 4 }) {
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(this.tokenIndices(this.visibleArgv(leaf).length), (j: number) => {
+          Text(this.visibleArgv(leaf)[j])
+            .fontSize(13)
+            .fontFamily('monospace')
+            .fontColor(j === 0 ? this.tk().text : this.tk().textSecondary)
+            .fontWeight(j === 0 ? FontWeight.Medium : FontWeight.Normal)
+            .margin({ right: 6 })
+        }, (j: number) => `${j}`)
+        if (leaf.triggering === true) {
+          Text(leaf.already_allowed === true ? t('触发审计 · 已有规则') : t('触发审计'))
+            .fontSize(10)
+            .fontColor(leaf.already_allowed === true ? this.tk().textSecondary : this.tk().warning)
+            .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+            .borderRadius(4)
+            .backgroundColor(this.tk().accentSoft)
+        }
+      }
+      .width('100%')
+      if (leaf.nested !== undefined && leaf.nested !== null) {
+        this.nestedBlock(leaf.nested)
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding(8)
+    .borderRadius(6)
+    .backgroundColor(leaf.triggering === true ? this.tk().accentSoft : this.tk().bgCard)
+  }
+
+  @Builder
+  viewBody(v: CommandView) {
+    Column({ space: 4 }) {
+      ForEach(this.leafIndices(v), (i: number) => {
+        if (i > 0) {
+          Text(connectorSymbol(v.connectors[i - 1]))
+            .fontSize(12).fontFamily('monospace').fontColor(this.tk().textDim)
+            .padding({ left: 4 })
+        }
+        this.leafRow(v.leaves[i])
+      }, (i: number) => `${i}`)
+    }
+    .width('100%')
+  }
+
+  build() {
+    if (this.view === null || this.view.leaves.length === 0) {
+      Text(this.command)
+        .fontSize(13).fontColor(this.tk().text).fontFamily('monospace').width('100%')
+        .padding(10).borderRadius(8).backgroundColor(this.tk().bgInput)
+    } else {
+      Column() {
+        this.viewBody(this.view)
+      }
+      .width('100%')
+      .padding(10).borderRadius(8).backgroundColor(this.tk().bgInput)
+    }
   }
 }
 
