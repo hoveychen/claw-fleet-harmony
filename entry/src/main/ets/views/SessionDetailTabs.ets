@@ -473,10 +473,11 @@ export struct TaskPlansTab {
       }
       ForEach(p.items, (item: TaskItem) => {
         Row({ space: 8 }) {
-          Text(item.done ? '✓' : (this.isCurrent(item) ? '▸' : '○'))
-            .fontSize(13)
-            .fontColor(item.done ? this.tk().success : (this.isCurrent(item) ? this.tk().accent : this.tk().textDim))
-            .width(16)
+          Icon({
+            src: item.done ? $r('app.media.ic_square_check_big') : $r('app.media.ic_square'),
+            iconSize: 14,
+            color: item.done ? this.tk().success : (this.isCurrent(item) ? this.tk().accent : this.tk().textDim)
+          })
           Text(item.text)
             .fontSize(13)
             .fontColor(item.done ? this.tk().textDim : this.tk().textSecondary)
@@ -878,7 +879,7 @@ export struct HandoffTab {
     } else if (this.state === 'error') {
       TabHint({ text: t('加载失败（桌面端可能离线）') })
     } else if (this.chain === null) {
-      EmptyState({ compact: true, iconRes: $r('app.media.ic_link'), title: t('该会话不在任何接力链上') })
+      EmptyState({ compact: true, iconRes: $r('app.media.ic_waypoints'), title: t('该会话不在任何接力链上') })
     } else {
       Scroll() {
         this.chainBody(this.chain)

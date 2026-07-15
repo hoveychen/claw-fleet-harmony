@@ -615,7 +615,7 @@ export struct DecisionsView {
           })
         } else {
           EmptyState({
-            iconRes: $r('app.media.ic_wifi_off'),
+            iconRes: $r('app.media.ic_cloud_off'),
             title: t('桌面端离线'),
             subtitle: t('暂时收不到新决策，等桌面端重新上线就会同步过来。'),
           })
@@ -1037,11 +1037,14 @@ struct PlanCard {
             })
         }
       }
-      Text(this.editing ? t('放弃编辑') : t('编辑计划'))
-        .fontSize(12)
-        .fontColor(this.tk().textSecondary)
-        .padding({ top: 4, bottom: 4 })
-        .onClick(() => this.toggleEditing())
+      Row({ space: 4 }) {
+        Icon({ src: $r('app.media.ic_pencil'), iconSize: 12, color: this.tk().textSecondary })
+        Text(this.editing ? t('放弃编辑') : t('编辑计划'))
+          .fontSize(12)
+          .fontColor(this.tk().textSecondary)
+      }
+      .padding({ top: 4, bottom: 4 })
+      .onClick(() => this.toggleEditing())
       if (this.rejecting) {
         TextArea({ text: this.feedback, placeholder: t('驳回意见（会转告给 AI 修改计划）') })
           .fontSize(13)

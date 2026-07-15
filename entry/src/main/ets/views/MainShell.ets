@@ -333,7 +333,7 @@ export struct MainShell {
   fab() {
     Column() {
       Stack() {
-        Text('+').fontSize(28).fontWeight(FontWeight.Bold).fontColor('#ffffff')
+        Icon({ src: $r('app.media.ic_plus'), iconSize: 24, color: '#ffffff' })
       }
       .width(46)
       .height(46)
@@ -352,7 +352,7 @@ export struct MainShell {
   bottomBar() {
     Row() {
       this.tabItem('decisions', $r('app.media.ic_inbox'), t('决策'), this.decisions.length)
-      this.tabItem('tasks', $r('app.media.ic_list_todo'), t('任务'), 0)
+      this.tabItem('tasks', $r('app.media.ic_list_checks'), t('任务'), 0)
       this.fab()
       this.tabItem('wiki', $r('app.media.ic_book_open'), t('知识库'), 0)
       this.tabItem('more', $r('app.media.ic_ellipsis'), t('更多'), 0)
