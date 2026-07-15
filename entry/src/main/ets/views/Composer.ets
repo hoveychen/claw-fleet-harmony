@@ -47,6 +47,7 @@ interface NewSessionDraft {
   workspace: string;
   customWorkspace: string;
   prompt: string;
+  tool: string;
   model: string;
   effort: string;
   permissionMode: string;
@@ -58,6 +59,7 @@ interface NewSessionDraftRaw {
   workspace?: string;
   customWorkspace?: string;
   prompt?: string;
+  tool?: string;
   model?: string;
   effort?: string;
   permissionMode?: string;
@@ -65,11 +67,12 @@ interface NewSessionDraftRaw {
 
 function defaultNewSessionDraft(): NewSessionDraft {
   // acceptEdits 默认:headless -p 会话在 default 模式下无法批准文件编辑
-  // (与桌面启动器同默认)。
+  // (与桌面启动器同默认)。Codex 无此概念,提交时忽略。
   return {
     workspace: '',
     customWorkspace: '',
     prompt: '',
+    tool: 'claude',
     model: '',
     effort: '',
     permissionMode: 'acceptEdits',
@@ -94,6 +97,9 @@ function loadNewSessionDraft(): NewSessionDraft {
     }
     if (typeof p.prompt === 'string') {
       d.prompt = p.prompt;
+    }
+    if (typeof p.tool === 'string') {
+      d.tool = p.tool;
     }
     if (typeof p.model === 'string') {
       d.model = p.model;
@@ -133,6 +139,30 @@ const EFFORT_CHOICES: Choice[] = [
   { value: 'max', label: 'max' },
 ];
 
+// Codex model ids (`codex exec -m`), disjoint from Claude's — mirrors desktop.
+const CODEX_MODEL_CHOICES: Choice[] = [
+  { value: '', label: '默认模型' },
+  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+  { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+  { value: 'gpt-5.5', label: 'GPT-5.5' },
+];
+
+// Codex reasoning effort — no "xhigh"/"max", adds "minimal" (mirrors desktop).
+const CODEX_EFFORT_CHOICES: Choice[] = [
+  { value: '', label: '默认努力度' },
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+];
+
+// The agent tools Fleet can launch a new session with (mirrors AGENT_TOOL_CHOICES).
+const AGENT_TOOL_CHOICES: Choice[] = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
+];
+
 /// Permission choices; the leading entry's label differs for new vs. resume
 /// (默认权限 / 沿用权限), passed in by the caller.
 function permissionChoices(defaultLabel: string): Choice[] {
@@ -148,6 +178,7 @@ interface SpawnParams {
   workspacePath: string;
   prompt: string;
   sessionId: string;
+  tool?: string;
   model?: string;
   effort?: string;
   permissionMode?: string;
@@ -157,6 +188,9 @@ interface ResumeParams {
   sessionId: string;
   workspacePath: string;
   prompt?: string;
+  // Session's source ("claude-code" / "codex"); the relay routes the resume by
+  // it (blank → claude). A Codex thread resumed as claude would fail.
+  agentSource?: string;
   model?: string;
   effort?: string;
   permissionMode?: string;
@@ -201,6 +235,9 @@ struct OptionSelects {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
 
+  // Codex has disjoint model/effort ids and no `--permission-mode` analogue, so
+  // the permission select is hidden and the codex choice lists are used.
+  @Prop isCodex: boolean = false;
   @Prop model: string = '';
   @Prop effort: string = '';
   @Prop permissionMode: string = '';
@@ -213,36 +250,46 @@ struct OptionSelects {
     return themeTokens(this.resolvedTheme);
   }
 
+  private modelChoices(): Choice[] {
+    return this.isCodex ? CODEX_MODEL_CHOICES : MODEL_CHOICES;
+  }
+
+  private effortChoices(): Choice[] {
+    return this.isCodex ? CODEX_EFFORT_CHOICES : EFFORT_CHOICES;
+  }
+
   build() {
     Row({ space: 6 }) {
-      Select(selectOptions(MODEL_CHOICES))
-        .selected(selectedIdx(MODEL_CHOICES, this.model))
-        .value(t(MODEL_CHOICES[selectedIdx(MODEL_CHOICES, this.model)].label))
+      Select(selectOptions(this.modelChoices()))
+        .selected(selectedIdx(this.modelChoices(), this.model))
+        .value(t(this.modelChoices()[selectedIdx(this.modelChoices(), this.model)].label))
         .font({ size: 12 })
         .fontColor(this.tk().text)
         .backgroundColor(this.tk().bgInput)
         .borderRadius(8)
         .layoutWeight(1)
-        .onSelect((i: number) => this.onModel(MODEL_CHOICES[i].value))
-      Select(selectOptions(EFFORT_CHOICES))
-        .selected(selectedIdx(EFFORT_CHOICES, this.effort))
-        .value(t(EFFORT_CHOICES[selectedIdx(EFFORT_CHOICES, this.effort)].label))
+        .onSelect((i: number) => this.onModel(this.modelChoices()[i].value))
+      Select(selectOptions(this.effortChoices()))
+        .selected(selectedIdx(this.effortChoices(), this.effort))
+        .value(t(this.effortChoices()[selectedIdx(this.effortChoices(), this.effort)].label))
         .font({ size: 12 })
         .fontColor(this.tk().text)
         .backgroundColor(this.tk().bgInput)
         .borderRadius(8)
         .layoutWeight(1)
-        .onSelect((i: number) => this.onEffort(EFFORT_CHOICES[i].value))
-      Select(selectOptions(permissionChoices(this.permissionDefaultLabel)))
-        .selected(selectedIdx(permissionChoices(this.permissionDefaultLabel), this.permissionMode))
-        .value(t(permissionChoices(this.permissionDefaultLabel)[
-          selectedIdx(permissionChoices(this.permissionDefaultLabel), this.permissionMode)].label))
-        .font({ size: 12 })
-        .fontColor(this.tk().text)
-        .backgroundColor(this.tk().bgInput)
-        .borderRadius(8)
-        .layoutWeight(1)
-        .onSelect((i: number) => this.onPermission(permissionChoices(this.permissionDefaultLabel)[i].value))
+        .onSelect((i: number) => this.onEffort(this.effortChoices()[i].value))
+      if (!this.isCodex) {
+        Select(selectOptions(permissionChoices(this.permissionDefaultLabel)))
+          .selected(selectedIdx(permissionChoices(this.permissionDefaultLabel), this.permissionMode))
+          .value(t(permissionChoices(this.permissionDefaultLabel)[
+            selectedIdx(permissionChoices(this.permissionDefaultLabel), this.permissionMode)].label))
+          .font({ size: 12 })
+          .fontColor(this.tk().text)
+          .backgroundColor(this.tk().bgInput)
+          .borderRadius(8)
+          .layoutWeight(1)
+          .onSelect((i: number) => this.onPermission(permissionChoices(this.permissionDefaultLabel)[i].value))
+      }
     }
     .width('100%')
   }
@@ -318,6 +365,7 @@ export struct NewSessionSheet {
   @State private workspaceKey: string = '';
   @State private customWorkspace: string = '';
   @State private prompt: string = '';
+  @State private tool: string = 'claude';
   @State private model: string = '';
   @State private effort: string = '';
   @State private permissionMode: string = 'acceptEdits';
@@ -374,6 +422,20 @@ export struct NewSessionSheet {
     this.attachments = this.attachments.filter((a: Attachment) => a.path !== path);
   }
 
+  private isCodex(): boolean {
+    return this.tool === 'codex';
+  }
+
+  /// Switching tool clears model/effort — Claude and Codex model ids are
+  /// disjoint, so a leftover Claude model would reach `codex exec -m` (and vice
+  /// versa). Mirrors the desktop NewSessionForm.
+  private setTool(v: string): void {
+    this.tool = v;
+    this.model = '';
+    this.effort = '';
+    this.saveDraftNow();
+  }
+
   /// Snapshot the current form state to the persisted draft. Called after every
   /// field edit so a mid-input sheet close / process kill loses nothing.
   private saveDraftNow(): void {
@@ -381,6 +443,7 @@ export struct NewSessionSheet {
       workspace: this.workspaceKey,
       customWorkspace: this.customWorkspace,
       prompt: this.prompt,
+      tool: this.tool,
       model: this.model,
       effort: this.effort,
       permissionMode: this.permissionMode,
@@ -397,6 +460,7 @@ export struct NewSessionSheet {
     this.workspaceKey = d.workspace;
     this.customWorkspace = d.customWorkspace;
     this.prompt = d.prompt;
+    this.tool = d.tool;
     this.model = d.model;
     this.effort = d.effort;
     this.permissionMode = d.permissionMode;
@@ -502,6 +566,7 @@ export struct NewSessionSheet {
       workspacePath: this.effectiveWorkspace(),
       prompt: withContextFiles(this.prompt.trim(), this.attachments),
       sessionId,
+      tool: this.tool,
     };
     if (this.model.length > 0) {
       params.model = this.model;
@@ -509,7 +574,8 @@ export struct NewSessionSheet {
     if (this.effort.length > 0) {
       params.effort = this.effort;
     }
-    if (this.permissionMode.length > 0) {
+    // Codex has no --permission-mode analogue; only send it for Claude.
+    if (!this.isCodex() && this.permissionMode.length > 0) {
       params.permissionMode = this.permissionMode;
     }
     void this.spawnWithConfirm(client, params, sessionId);
@@ -677,7 +743,20 @@ export struct NewSessionSheet {
           onRemove: (path: string) => this.removeAttachment(path),
         })
 
+        // Agent tool (Claude / Codex) — Codex routes to `codex exec` and hides
+        // the permission select (no --permission-mode analogue).
+        Select(selectOptions(AGENT_TOOL_CHOICES))
+          .selected(selectedIdx(AGENT_TOOL_CHOICES, this.tool))
+          .value(t(AGENT_TOOL_CHOICES[selectedIdx(AGENT_TOOL_CHOICES, this.tool)].label))
+          .font({ size: 12 })
+          .fontColor(this.tk().text)
+          .backgroundColor(this.tk().bgInput)
+          .borderRadius(8)
+          .width('100%')
+          .onSelect((i: number) => this.setTool(AGENT_TOOL_CHOICES[i].value))
+
         OptionSelects({
+          isCodex: this.isCodex(),
           model: this.model,
           effort: this.effort,
           permissionMode: this.permissionMode,
@@ -809,6 +888,10 @@ export struct ResumeComposer {
     return this.mode === 'enqueue';
   }
 
+  private isCodex(): boolean {
+    return this.session.agentSource === 'codex';
+  }
+
   private shouldShow(): boolean {
     return this.isEnqueue()
       ? canEnqueueSession(this.session)
@@ -883,6 +966,9 @@ export struct ResumeComposer {
     const params: ResumeParams = {
       sessionId: this.session.id,
       workspacePath: this.session.workspacePath,
+      // Route the resume by source (blank → claude); a Codex thread resumed as
+      // claude would fail, so always send it.
+      agentSource: this.session.agentSource ?? '',
     };
     // Empty prompt (and no attachments) = "continue" (relay supplies the
     // fallback). Attachments alone still form a non-empty Context files: block.
@@ -896,7 +982,8 @@ export struct ResumeComposer {
     if (this.effort.length > 0) {
       params.effort = this.effort;
     }
-    if (this.permissionMode.length > 0) {
+    // Codex has no --permission-mode analogue; only send it for Claude.
+    if (!this.isCodex() && this.permissionMode.length > 0) {
       params.permissionMode = this.permissionMode;
     }
     client.request<Object>('resume_session', params)
@@ -949,6 +1036,7 @@ export struct ResumeComposer {
           if (!this.isEnqueue()) {
             Column() {
               OptionSelects({
+                isCodex: this.isCodex(),
                 model: this.model,
                 effort: this.effort,
                 permissionMode: this.permissionMode,

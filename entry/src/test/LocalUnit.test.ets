@@ -1,6 +1,7 @@
 import { describe, beforeAll, beforeEach, afterEach, afterAll, it, expect } from '@ohos/hypium';
 import { waitForSessionId } from '../main/ets/common/SpawnConfirm';
-import { SessionInfo } from '../main/ets/models/Types';
+import { SessionInfo, isFleetOwnedEntrypoint, canResumeSession, CODEX_FLEET_ORIGINATOR }
+  from '../main/ets/models/Types';
 
 // 只需要 id 参与匹配,其余字段用 as 补齐,避免造整个 SessionInfo。
 function sess(id: string): SessionInfo {
@@ -44,6 +45,35 @@ export default function localUnitTest() {
       expect(ok).assertFalse();
       expect(ticks).assertEqual(5);
       done();
+    });
+
+    // ── isFleetOwnedEntrypoint / canResumeSession:Fleet 起的 codex 会话应被认作
+    //    自有会话且可续接(对齐 mobile-web types.test.ts)──────────────────────
+    it('isFleetOwnedEntrypoint_claude_and_codex', 0, () => {
+      expect(isFleetOwnedEntrypoint('claw-fleet-newsession')).assertTrue();
+      expect(isFleetOwnedEntrypoint('claw-fleet-handoff')).assertTrue();
+      expect(isFleetOwnedEntrypoint(CODEX_FLEET_ORIGINATOR)).assertTrue();
+      expect(isFleetOwnedEntrypoint('fleet')).assertTrue();
+    });
+
+    it('isFleetOwnedEntrypoint_rejects_external', 0, () => {
+      expect(isFleetOwnedEntrypoint('cli')).assertFalse();
+      expect(isFleetOwnedEntrypoint('codex_exec')).assertFalse();
+      expect(isFleetOwnedEntrypoint(null)).assertFalse();
+      expect(isFleetOwnedEntrypoint(undefined)).assertFalse();
+    });
+
+    it('canResumeSession_fleet_codex_resumable', 0, () => {
+      const codex: SessionInfo = {
+        id: 's1', entrypoint: 'fleet', agentSource: 'codex',
+        isSubagent: false, procAlive: false, status: 'waitingInput',
+      } as SessionInfo;
+      expect(canResumeSession(codex)).assertTrue();
+      const external: SessionInfo = {
+        id: 's2', entrypoint: 'codex_exec', agentSource: 'codex',
+        isSubagent: false, procAlive: false, status: 'waitingInput',
+      } as SessionInfo;
+      expect(canResumeSession(external)).assertFalse();
     });
 
     // Defines a test suite. Two parameters are supported: test suite name and test suite function.

@@ -776,6 +776,13 @@ export struct TasksView {
         if (statusTone(s.status).length > 0) {
           Circle({ width: 8, height: 8 }).fill(this.toneColor(statusTone(s.status)))
         }
+        // Agent-source mark (Codex OpenAI logo / Claude sparkle) — distinguishes
+        // a Codex session at a glance, mirroring the desktop SessionCard.
+        if (s.agentSource === 'codex') {
+          Icon({ src: $r('app.media.ic_provider_codex'), iconSize: 11, color: this.tk().textDim })
+        } else {
+          Icon({ src: $r('app.media.ic_provider_claude'), iconSize: 11, color: this.tk().textDim })
+        }
         Text(this.cardTitle(s))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
