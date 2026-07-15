@@ -5,6 +5,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { setRootBackHandler } from '../common/BackStack';
 import { t } from '../common/I18n';
 import { RelayClient, DeviceInfo, RelayHandlers } from '../common/Relay';
+import { MockRelayClient } from '../common/MockRelay';
 import { RelayStore } from '../common/RelayStore';
 import { loadClientId, deviceLabel, DEVICE_PLATFORM } from '../common/Device';
 import { SessionInfo, PendingDecision, PendingSnapshot, DecisionRequest, DecisionKind, TodayUsage } from '../models/Types';
@@ -49,6 +50,10 @@ export struct MainShell {
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
   @State tab: string = 'decisions';
+  // No-scan trial mode: run the shell against MockRelayClient's simulated data
+  // instead of a live relay. Threaded from Index; drives the header 「试用模式」
+  // badge and the MockRelayClient swap in startRelay.
+  trial: boolean = false;
   onRepair: () => void = () => {};
   onNewSession: () => void = () => {};
   onAuthError: (message: string) => void = () => {};
@@ -162,11 +167,6 @@ export struct MainShell {
   }
 
   private async startRelay(): Promise<void> {
-    const pairing = await RelayStore.loadPairing(this.ctx());
-    if (pairing === null) {
-      this.ready = true;
-      return;
-    }
     const handlers: RelayHandlers = {
       onStatus: (connected: boolean) => {
         this.connected = connected;
@@ -199,6 +199,19 @@ export struct MainShell {
         this.onAuthError(message);
       },
     };
+    // Trial mode: no socket, no pairing secret — MockRelayClient feeds the same
+    // handlers with simulated data and answers every request() from fixtures.
+    if (this.trial) {
+      this.client = new MockRelayClient(handlers);
+      this.client.connect();
+      this.ready = true;
+      return;
+    }
+    const pairing = await RelayStore.loadPairing(this.ctx());
+    if (pairing === null) {
+      this.ready = true;
+      return;
+    }
     // Prove inflate works before the first hello advertises supportsGzip —
     // hellos repeat every 15 s, so a late PASS still upgrades the channel.
     void gzipSelfTest();
@@ -295,6 +308,9 @@ export struct MainShell {
   }
 
   private statusColor(): string {
+    if (this.trial) {
+      return this.tk().accent;
+    }
     if (!this.connected) {
       return this.tk().textDim;
     }
@@ -302,6 +318,9 @@ export struct MainShell {
   }
 
   private statusLabel(): string {
+    if (this.trial) {
+      return t('试用模式');
+    }
     if (!this.connected) {
       return t('连接中…');
     }
@@ -541,6 +560,7 @@ export struct MainShell {
         } else {
           MoreView({
             onRepair: this.onRepair,
+            trial: this.trial,
             connected: this.connected,
             agentOnline: this.agentOnline,
             onOpenUsage: () => {

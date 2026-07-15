@@ -18,6 +18,9 @@ export struct GateView {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
   onPaired: () => void = () => {};
+  // Enter the no-scan trial mode (simulated data). Lets the atomic service be
+  // used and reviewed standalone before a desktop pairing QR is scanned.
+  onTrial: () => void = () => {};
   @State status: string = '';
   @State busy: boolean = false;
 
@@ -89,6 +92,14 @@ export struct GateView {
         .backgroundColor(this.tk().accent)
         .onClick(() => {
           this.startPairing();
+        })
+      Text(t('免扫码体验(试用模式)'))
+        .fontSize(14)
+        .fontColor(this.tk().accent)
+        .padding({ top: 4, bottom: 4 })
+        .enabled(!this.busy)
+        .onClick(() => {
+          this.onTrial();
         })
     }
     .width('100%')

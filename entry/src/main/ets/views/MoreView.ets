@@ -19,6 +19,9 @@ export struct MoreView {
   @StorageProp('keepScreenOn') keepScreenOn: boolean = false;
   @Prop connected: boolean = false;
   @Prop agentOnline: boolean = false;
+  // No-scan trial mode: swaps the 桌面端 status to 「试用模式」 and the 配对 danger
+  // row to a 「退出试用」 action (no secret to clear).
+  @Prop trial: boolean = false;
   @StorageProp('pushSubscribed') pushSubscribed: boolean = false;
   @State private enablingPush: boolean = false;
   @State private pushNote: string = '';
@@ -80,6 +83,9 @@ export struct MoreView {
   }
 
   private connLabel(): string {
+    if (this.trial) {
+      return t('试用模式');
+    }
     if (!this.connected) {
       return t('连接中…');
     }
@@ -87,6 +93,9 @@ export struct MoreView {
   }
 
   private connColor(): string {
+    if (this.trial) {
+      return this.tk().accent;
+    }
     if (!this.connected) {
       return this.tk().textDim;
     }
@@ -295,13 +304,23 @@ export struct MoreView {
         // ── 配对 ──
         this.sectionTitle(t('配对'))
         Column() {
-          Text(t('重新配对 / 清除密钥'))
-            .fontSize(14)
-            .fontColor(this.tk().error)
-            .width('100%')
-            .textAlign(TextAlign.Start)
-            .padding({ left: 14, right: 14, top: 13, bottom: 13 })
-            .onClick(() => this.confirmRepair())
+          if (this.trial) {
+            Text(t('退出试用 / 扫码连接桌面端'))
+              .fontSize(14)
+              .fontColor(this.tk().accent)
+              .width('100%')
+              .textAlign(TextAlign.Start)
+              .padding({ left: 14, right: 14, top: 13, bottom: 13 })
+              .onClick(() => this.onRepair())
+          } else {
+            Text(t('重新配对 / 清除密钥'))
+              .fontSize(14)
+              .fontColor(this.tk().error)
+              .width('100%')
+              .textAlign(TextAlign.Start)
+              .padding({ left: 14, right: 14, top: 13, bottom: 13 })
+              .onClick(() => this.confirmRepair())
+          }
         }
         .width('100%')
         .backgroundColor(this.tk().bgCard)
