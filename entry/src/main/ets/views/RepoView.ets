@@ -60,7 +60,8 @@ export struct RepoView {
         .fontWeight(FontWeight.Bold)
         .fontColor(this.tk().text)
         .layoutWeight(1)
-        .textAlign(TextAlign.Center)
+        .textAlign(TextAlign.Start)
+        .margin({ left: 12 })
       Text('⟳').fontSize(18).fontColor(this.tk().text).onClick(() => this.refresh())
     }
     .width('100%')
@@ -75,9 +76,10 @@ export struct RepoView {
     Text(text)
       .fontSize(11)
       .fontColor(warn ? this.tk().warning : this.tk().textSecondary)
-      .backgroundColor(warn ? this.tk().accentSoft : this.tk().bgInput)
+      .backgroundColor(this.tk().bgInput)
       .padding({ left: 7, right: 7, top: 2, bottom: 2 })
       .borderRadius(6)
+      .border({ width: 1, color: warn ? this.tk().warning : Color.Transparent })
   }
 
   @Builder
@@ -107,7 +109,7 @@ export struct RepoView {
       Icon({
         src: $r('app.media.ic_folder_git_2'),
         iconSize: 18,
-        color: repo.needsAttention ? this.tk().warning : this.tk().textSecondary
+        color: repo.needsAttention ? this.tk().warning : this.tk().textDim
       })
       Column({ space: 4 }) {
         Text(repo.label)
@@ -143,7 +145,7 @@ export struct RepoView {
           if (this.error.length > 0) {
             Text(t('仓库加载失败：{0}', this.error))
               .fontSize(13)
-              .fontColor(this.tk().error)
+              .fontColor(this.tk().textSecondary)
               .width('100%')
           } else if (this.repos === null) {
             Text(t('加载中…')).fontSize(13).fontColor(this.tk().textDim).width('100%').margin({ top: 20 })
