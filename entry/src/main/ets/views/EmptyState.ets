@@ -42,7 +42,7 @@ export struct EmptyState {
   }
 
   private chipSize(): number {
-    return this.compact ? 48 : 60;
+    return this.compact ? 44 : 60;
   }
 
   build() {
@@ -55,12 +55,16 @@ export struct EmptyState {
       } else if (this.iconRes !== undefined) {
         // Round icon chip: subtle base + border + soft shadow (GitHub blankslate).
         Stack() {
-          Icon({ src: this.iconRes, iconSize: this.compact ? 26 : 30, color: this.tk().textSecondary })
+          Icon({ src: this.iconRes, iconSize: this.compact ? 20 : 26, color: this.tk().textSecondary })
         }
         .width(this.chipSize())
         .height(this.chipSize())
         .borderRadius(this.chipSize() / 2)
-        .backgroundColor(this.tk().bgInput)
+        .radialGradient({
+          center: ['50%', '38%'],
+          radius: this.chipSize(),
+          colors: [[this.tk().bgCardHover, 0.0], [this.tk().bgCard, 1.0]],
+        })
         .border({ width: 1, color: this.tk().border })
         .shadow({ radius: 8, color: 'rgba(0,0,0,0.12)', offsetX: 0, offsetY: 2 })
       } else if (this.icon.length > 0) {

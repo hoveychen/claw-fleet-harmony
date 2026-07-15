@@ -270,30 +270,30 @@ struct AttachmentBar {
     Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
       ForEach(this.attachments, (a: Attachment) => {
         Row({ space: 4 }) {
-          Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textSecondary })
           Text(a.name)
             .fontSize(12)
-            .fontColor(this.tk().text)
+            .fontColor(this.tk().textSecondary)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .constraintSize({ maxWidth: 140 })
           Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
             .onClick(() => this.onRemove(a.path))
         }
-        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-        .borderRadius(6)
-        .backgroundColor(this.tk().bgInput)
+        .padding({ left: 10, right: 6, top: 4, bottom: 4 })
+        .borderRadius(999)
+        .backgroundColor(this.tk().bgCard)
         .border({ width: 1, color: this.tk().border })
       }, (a: Attachment) => a.path)
 
       Button() {
         Row({ space: 4 }) {
-          Icon({ src: $r('app.media.ic_paperclip'), iconSize: 14, color: this.tk().text })
-          Text(this.uploading ? t('上传中…') : t('附件')).fontSize(13).fontColor(this.tk().text)
+          Icon({ src: $r('app.media.ic_paperclip'), iconSize: 13, color: this.tk().textDim })
+          Text(this.uploading ? t('上传中…') : t('附件')).fontSize(13).fontColor(this.tk().textDim)
         }
       }
-      .backgroundColor(this.tk().bgInput)
-      .borderRadius(8)
+      .backgroundColor(Color.Transparent)
+      .border({ width: 1, color: this.tk().borderStrong, style: BorderStyle.Dashed })
+      .borderRadius(999)
       .padding({ left: 12, right: 12, top: 6, bottom: 6 })
       .enabled(this.pickEnabled && !this.uploading)
       .onClick(() => this.onPick())
@@ -547,7 +547,7 @@ export struct NewSessionSheet {
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
             .layoutWeight(1)
-          Icon({ src: $r('app.media.ic_x'), iconSize: 16, color: this.tk().textDim })
+          Icon({ src: $r('app.media.ic_x'), iconSize: 18, color: this.tk().textDim })
             .onClick(() => this.onClose())
         }
         .width('100%')
@@ -585,7 +585,7 @@ export struct NewSessionSheet {
               })
             Button() {
               Row({ space: 4 }) {
-                Icon({ src: $r('app.media.ic_folder_search'), iconSize: 14, color: this.tk().text })
+                Icon({ src: $r('app.media.ic_folder_search'), iconSize: 15, color: this.tk().text })
                 Text(t('浏览…')).fontSize(13).fontColor(this.tk().text)
               }
             }
@@ -641,11 +641,12 @@ export struct NewSessionSheet {
 
         Button() {
           Row({ space: 6 }) {
-            Icon({ src: $r('app.media.ic_send'), iconSize: 16, color: '#ffffff' })
-            Text(this.busy ? t('创建中…') : t('创建会话')).fontSize(15).fontColor('#ffffff')
+            Icon({ src: $r('app.media.ic_send'), iconSize: 15, color: '#ffffff' })
+            Text(this.busy ? t('创建中…') : t('创建会话')).fontSize(15).fontWeight(600).fontColor('#ffffff')
           }
         }
           .width('100%')
+          .borderRadius(10)
           .backgroundColor(this.tk().accent)
           .enabled(this.canSubmit())
           .onClick(() => this.submit())

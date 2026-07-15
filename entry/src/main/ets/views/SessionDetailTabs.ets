@@ -473,14 +473,20 @@ export struct TaskPlansTab {
       }
       ForEach(p.items, (item: TaskItem) => {
         Row({ space: 8 }) {
-          Icon({
-            src: item.done ? $r('app.media.ic_square_check_big') : $r('app.media.ic_square'),
-            iconSize: 14,
-            color: item.done ? this.tk().success : (this.isCurrent(item) ? this.tk().accent : this.tk().textDim)
-          })
+          Stack() {
+            if (item.done) {
+              Icon({ src: $r('app.media.ic_check'), iconSize: 11, color: this.tk().textDim })
+            }
+          }
+          .width(15)
+          .height(15)
+          .borderRadius(4)
+          .border({ width: 1, color: this.tk().borderStrong })
+          .margin({ top: 2 })
           Text(item.text)
-            .fontSize(13)
-            .fontColor(item.done ? this.tk().textDim : this.tk().textSecondary)
+            .fontSize(12.5)
+            .fontColor(item.done ? this.tk().textDim
+              : (this.isCurrent(item) ? this.tk().accent : this.tk().textSecondary))
             .decoration({ type: item.done ? TextDecorationType.LineThrough : TextDecorationType.None })
             .layoutWeight(1)
         }

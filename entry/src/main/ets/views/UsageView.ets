@@ -233,7 +233,7 @@ export struct UsageView {
   header() {
     Row() {
       Row({ space: 2 }) {
-        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 22, color: this.tk().accent })
         Text(t('更多')).fontSize(15).fontColor(this.tk().accent)
       }
       .onClick(() => this.onBack())

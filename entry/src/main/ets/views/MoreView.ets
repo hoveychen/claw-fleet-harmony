@@ -135,7 +135,7 @@ export struct MoreView {
   segButton(label: string, active: boolean, onTap: () => void) {
     Text(label)
       .fontSize(13)
-      .fontWeight(active ? FontWeight.Medium : FontWeight.Normal)
+      .fontWeight(active ? 600 : FontWeight.Normal)
       .fontColor(active ? this.tk().accent : this.tk().textSecondary)
       .backgroundColor(active ? this.tk().accentSoft : Color.Transparent)
       .padding({ top: 5, bottom: 5, left: 13, right: 13 })

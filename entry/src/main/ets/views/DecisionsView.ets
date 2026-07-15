@@ -436,7 +436,7 @@ struct PrecedingNarration {
         Row({ space: 4 }) {
           Icon({
             src: this.expanded ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
-            iconSize: 12,
+            iconSize: 14,
             color: this.tk().textDim,
           })
           Text(this.expanded
@@ -873,15 +873,18 @@ struct GuardCard {
           })
       }
       if (this.prefixMenuOpen && this.prefixes().length > 1) {
-        Column({ space: 4 }) {
+        Column({ space: 6 }) {
           ForEach(this.prefixes(), (p: string) => {
-            Text(`${t('总是允许')}  ${p}`)
-              .fontSize(12)
-              .fontColor(this.tk().text)
+            Text() {
+              Span(`${t('总是允许')} `).fontColor(this.tk().text)
+              Span(p).fontColor(this.tk().accent)
+            }
+              .fontSize(12.5)
               .width('100%')
-              .padding(8)
-              .borderRadius(6)
-              .backgroundColor(this.tk().bgInput)
+              .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+              .borderRadius(8)
+              .backgroundColor(this.tk().bgSecondary)
+              .border({ width: 1, color: this.tk().borderStrong })
               .onClick(() => this.alwaysAllow(p))
           })
         }
@@ -889,27 +892,31 @@ struct GuardCard {
       }
       Row({ space: 8 }) {
         Button(this.showReason ? t('确认拒绝') : t('拒绝'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor(this.tk().error)
-          .backgroundColor(Color.Transparent)
-          .borderRadius(8)
-          .border({ width: 1, color: this.tk().error })
+          .backgroundColor(this.tk().bgSecondary)
+          .borderRadius(9)
+          .border({ width: 1, color: this.tk().border })
           .layoutWeight(1)
           .onClick(() => this.deny())
         if (this.prefixes().length > 0) {
           Button(this.prefixes().length === 1 ? t('总是允许 {0}', this.prefixes()[0]) : t('总是允许…'))
-            .fontSize(14)
+            .fontSize(14.5)
+            .fontWeight(600)
             .fontColor(this.tk().textSecondary)
-            .backgroundColor(this.tk().bgInput)
-            .borderRadius(8)
+            .backgroundColor(this.tk().bgSecondary)
+            .borderRadius(9)
+            .border({ width: 1, color: this.tk().border })
             .layoutWeight(1)
             .onClick(() => this.onAlwaysAllowTap())
         }
         Button(t('允许'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor('#ffffff')
           .backgroundColor(this.tk().accent)
-          .borderRadius(8)
+          .borderRadius(9)
           .layoutWeight(1)
           .onClick(() => this.allow())
       }
@@ -996,18 +1003,20 @@ struct PermissionCard {
       }
       Row({ space: 8 }) {
         Button(this.showReason ? t('确认拒绝') : t('拒绝'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor(this.tk().error)
-          .backgroundColor(Color.Transparent)
-          .borderRadius(8)
-          .border({ width: 1, color: this.tk().error })
+          .backgroundColor(this.tk().bgSecondary)
+          .borderRadius(9)
+          .border({ width: 1, color: this.tk().border })
           .layoutWeight(1)
           .onClick(() => this.deny())
         Button(t('允许'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor('#ffffff')
           .backgroundColor(this.tk().accent)
-          .borderRadius(8)
+          .borderRadius(9)
           .layoutWeight(1)
           .onClick(() => this.allow())
       }
@@ -1122,7 +1131,7 @@ struct PlanCard {
         }
       }
       Row({ space: 4 }) {
-        Icon({ src: $r('app.media.ic_pencil'), iconSize: 12, color: this.tk().textSecondary })
+        Icon({ src: $r('app.media.ic_pencil'), iconSize: 13, color: this.tk().textSecondary })
         Text(this.editing ? t('放弃编辑') : t('编辑计划'))
           .fontSize(12)
           .fontColor(this.tk().textSecondary)
@@ -1143,18 +1152,20 @@ struct PlanCard {
       }
       Row({ space: 8 }) {
         Button(this.rejecting ? t('确认驳回') : t('驳回'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor(this.tk().error)
-          .backgroundColor(Color.Transparent)
-          .borderRadius(8)
-          .border({ width: 1, color: this.tk().error })
+          .backgroundColor(this.tk().bgSecondary)
+          .borderRadius(9)
+          .border({ width: 1, color: this.tk().border })
           .layoutWeight(1)
           .onClick(() => this.reject())
         Button(this.isEdited() ? t('批准已编辑版') : t('批准'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor('#ffffff')
           .backgroundColor(this.tk().accent)
-          .borderRadius(8)
+          .borderRadius(9)
           .layoutWeight(1)
           .onClick(() => this.approve())
       }
@@ -1221,11 +1232,12 @@ struct A2uiCard {
       }
       Row() {
         Button(this.cancelling ? t('确认取消这张卡') : t('取消（告知 agent）'))
-          .fontSize(14)
+          .fontSize(14.5)
+          .fontWeight(600)
           .fontColor(this.tk().error)
-          .backgroundColor(Color.Transparent)
-          .borderRadius(8)
-          .border({ width: 1, color: this.tk().error })
+          .backgroundColor(this.tk().bgSecondary)
+          .borderRadius(9)
+          .border({ width: 1, color: this.tk().border })
           .layoutWeight(1)
           .onClick(() => this.cancel())
       }
@@ -1635,13 +1647,31 @@ struct QuestionsCard {
     this.onAnswered(this.request.id);
   }
 
+  /// web .optionSideBtn: 34vp-wide bordered box flanking the option card,
+  /// stretched to the row height; active (preview open) turns accent.
+  @Builder
+  optionSideBtn(src: Resource, active: boolean, onTap: () => void) {
+    Stack() {
+      Icon({ src: src, iconSize: 14, color: active ? this.tk().accent : this.tk().textSecondary })
+    }
+    .width(34)
+    .alignSelf(ItemAlign.Stretch)
+    .borderRadius(8)
+    .backgroundColor(this.tk().bgSecondary)
+    .border({ width: 1, color: active ? this.tk().accent : this.tk().border })
+    .onClick(onTap)
+  }
+
   @Builder
   optionRow(q: FleetAskQuestion, o: ElicitationOption) {
     Column({ space: 8 }) {
-      Row({ space: 8 }) {
+      // web .optionRow: the option card and the side buttons are siblings —
+      // side buttons sit OUTSIDE the card border, flanking it.
+      Row({ space: 6 }) {
         Column({ space: 2 }) {
           Text(o.label)
-            .fontSize(14)
+            .fontSize(13)
+            .fontWeight(FontWeight.Medium)
             .fontColor(this.tk().text)
             .width('100%')
           if (o.description && o.description.length > 0) {
@@ -1653,16 +1683,16 @@ struct QuestionsCard {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
+        .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+        .borderRadius(8)
+        .backgroundColor(this.isSelected(q, o.label) ? this.tk().accentSoft : this.tk().bgSecondary)
+        .border({ width: 1, color: this.isSelected(q, o.label) ? this.tk().accent : this.tk().border })
+        .onClick(() => this.toggle(q, o.label))
         if (o.preview !== undefined && o.preview !== null && (o.preview as string).length > 0) {
-          Icon({
-            src: $r('app.media.ic_eye'),
-            iconSize: 14,
-            color: this.openPreview === this.previewKey(q, o) ? this.tk().accent : this.tk().textDim
-          })
-            .onClick(() => this.togglePreview(q, o))
+          this.optionSideBtn($r('app.media.ic_eye'), this.openPreview === this.previewKey(q, o),
+            () => this.togglePreview(q, o))
         }
-        Icon({ src: $r('app.media.ic_pencil'), iconSize: 14, color: this.tk().textDim })
-          .onClick(() => this.editToOther(q, o))
+        this.optionSideBtn($r('app.media.ic_pencil'), false, () => this.editToOther(q, o))
       }
       .width('100%')
       if (this.openPreview === this.previewKey(q, o)) {
@@ -1676,11 +1706,6 @@ struct QuestionsCard {
       }
     }
     .width('100%')
-    .padding(10)
-    .borderRadius(8)
-    .backgroundColor(this.isSelected(q, o.label) ? this.tk().accentSoft : this.tk().bgInput)
-    .border({ width: 1, color: this.isSelected(q, o.label) ? this.tk().accent : this.tk().border })
-    .onClick(() => this.toggle(q, o.label))
   }
 
   @Builder
@@ -1723,11 +1748,15 @@ struct QuestionsCard {
         .width('100%')
       } else if (field.kind === 'checkbox') {
         Row({ space: 8 }) {
-          Icon({
-            src: (this.form.get(field.name) ?? 'false') === 'true' ? $r('app.media.ic_square_check_big') : $r('app.media.ic_square'),
-            iconSize: 18,
-            color: (this.form.get(field.name) ?? 'false') === 'true' ? this.tk().accent : this.tk().textDim
-          })
+          Stack() {
+            if ((this.form.get(field.name) ?? 'false') === 'true') {
+              Icon({ src: $r('app.media.ic_check'), iconSize: 12, color: this.tk().text })
+            }
+          }
+          .width(18)
+          .height(18)
+          .borderRadius(5)
+          .border({ width: 1.5, color: this.tk().borderStrong })
           Text(field.label).fontSize(13).fontColor(this.tk().text)
         }
         .width('100%')
@@ -1852,42 +1881,61 @@ struct QuestionsCard {
       if ((q.options?.length ?? 0) > 0) {
         Text(t('其他')).fontSize(12).fontColor(this.tk().textSecondary).width('100%')
       }
-      TextArea({
-        text: this.custom.get(q.question) ?? '',
-        placeholder: (q.options?.length ?? 0) > 0 ? t('自定义回答') : t('自由回答…'),
-      })
-        .fontSize(13).fontColor(this.tk().text).placeholderColor(this.tk().textDim)
-        .backgroundColor(this.tk().bgInput).borderRadius(8).width('100%')
-        .onChange((v: string) => this.setCustom(q, v))
-      // Per-question attachments: pick + upload, appended as @path on submit.
-      Row({ space: 6 }) {
-        Icon({ src: $r('app.media.ic_paperclip'), iconSize: 14, color: this.tk().textSecondary })
-        Text(this.uploadingQ === q.question ? t('上传中…') : t('附件'))
-          .fontSize(12).fontColor(this.tk().textSecondary)
-      }
-      .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-      .borderRadius(8)
-      .backgroundColor(this.tk().bgInput)
-      .enabled(this.uploadingQ.length === 0)
-      .onClick(() => this.pickAttach(q))
-      if (this.attachmentsFor(q).length > 0) {
-        Flex({ wrap: FlexWrap.Wrap }) {
-          ForEach(this.attachmentsFor(q), (a: Attachment) => {
-            Row({ space: 4 }) {
-              Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textDim })
-              Text(a.name).fontSize(12).fontColor(this.tk().textSecondary).constraintSize({ maxWidth: 160 })
-                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-              Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
-                .onClick(() => this.removeAttach(q, a.path))
+      // web .otherBox: chips on top, then [26x26 bordered "+" button | textarea].
+      // Uploading state reads from the textarea placeholder, like the web.
+      Column({ space: 6 }) {
+        if (this.attachmentsFor(q).length > 0) {
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(this.attachmentsFor(q), (a: Attachment) => {
+              Row({ space: 4 }) {
+                Text(a.name).fontSize(11.5).fontColor(this.tk().textSecondary).constraintSize({ maxWidth: 160 })
+                  .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
+                  .onClick(() => this.removeAttach(q, a.path))
+              }
+              .padding({ left: 10, right: 6, top: 3, bottom: 3 })
+              .margin({ right: 6, bottom: 2 })
+              .borderRadius(999)
+              .backgroundColor(this.tk().bgSecondary)
+              .border({ width: 1, color: this.tk().border })
+            }, (a: Attachment) => a.path)
+          }
+          .width('100%')
+        }
+        Row({ space: 6 }) {
+          Stack() {
+            Icon({ src: $r('app.media.ic_plus'), iconSize: 14, color: this.tk().text })
+          }
+          .width(26)
+          .height(26)
+          .borderRadius(6)
+          .border({ width: 1, color: this.tk().border })
+          .opacity(this.uploadingQ.length === 0 ? 1 : 0.45)
+          .onClick(() => {
+            if (this.uploadingQ.length === 0) {
+              this.pickAttach(q);
             }
-            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-            .margin({ right: 6, top: 6 })
-            .borderRadius(6)
-            .backgroundColor(this.tk().bgCard)
-          }, (a: Attachment) => a.path)
+          })
+          TextArea({
+            text: this.custom.get(q.question) ?? '',
+            placeholder: this.uploadingQ === q.question
+              ? t('上传中…')
+              : ((q.options?.length ?? 0) > 0 ? t('自定义回答') : t('自由回答…')),
+          })
+            .fontSize(13).fontColor(this.tk().text).placeholderColor(this.tk().textDim)
+            .backgroundColor(Color.Transparent).padding({ left: 4, right: 4, top: 4, bottom: 4 })
+            .borderRadius(0).layoutWeight(1)
+            .onChange((v: string) => this.setCustom(q, v))
         }
         .width('100%')
+        .alignItems(VerticalAlign.Top)
       }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+      .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+      .borderRadius(8)
+      .backgroundColor(this.tk().bgSecondary)
+      .border({ width: 1, color: this.tk().border })
       if ((q.options?.length ?? 0) > 0 && !q.multiSelect) {
         Text(this.multiOverride.get(q.question) === true ? t('已改为多选') : t('改为多选'))
           .fontSize(12)
@@ -1931,22 +1979,27 @@ struct QuestionsCard {
       }
       Row({ space: 8 }) {
         Button(this.isFleetAsk ? t('取消') : t('拒绝回答'))
-          .fontSize(14).fontColor(this.tk().textSecondary).backgroundColor(this.tk().bgInput)
-          .borderRadius(8).layoutWeight(1)
+          .fontSize(14.5).fontWeight(600).fontColor(this.tk().textSecondary)
+          .backgroundColor(this.tk().bgSecondary)
+          .border({ width: 1, color: this.tk().border })
+          .borderRadius(9).layoutWeight(1)
           .onClick(() => this.decline())
         if (this.total() > 1 && this.qi() > 0) {
           Button(t('上一题'))
-            .fontSize(14).fontColor(this.tk().textSecondary).backgroundColor(this.tk().bgInput)
-            .borderRadius(8).layoutWeight(1)
+            .fontSize(14.5).fontWeight(600).fontColor(this.tk().textSecondary)
+            .backgroundColor(this.tk().bgSecondary)
+            .border({ width: 1, color: this.tk().border })
+            .borderRadius(9).layoutWeight(1)
             .onClick(() => {
               this.step = this.qi() - 1;
             })
         }
         if (this.total() > 1 && this.qi() < this.total() - 1) {
           Button(t('下一题'))
-            .fontSize(14).fontColor('#ffffff')
-            .backgroundColor(this.answeredQuestion(this.request.questions[this.qi()]) ? this.tk().accent : this.tk().textDim)
-            .borderRadius(8).layoutWeight(1)
+            .fontSize(14.5).fontWeight(600).fontColor('#ffffff')
+            .backgroundColor(this.tk().accent)
+            .opacity(this.answeredQuestion(this.request.questions[this.qi()]) ? 1 : 0.45)
+            .borderRadius(9).layoutWeight(1)
             .enabled(this.answeredQuestion(this.request.questions[this.qi()]))
             .onClick(() => {
               this.error = '';
@@ -1954,9 +2007,10 @@ struct QuestionsCard {
             })
         } else {
           Button(t('提交'))
-            .fontSize(14).fontColor('#ffffff')
-            .backgroundColor(this.allAnswered() ? this.tk().accent : this.tk().textDim)
-            .borderRadius(8).layoutWeight(1)
+            .fontSize(14.5).fontWeight(600).fontColor('#ffffff')
+            .backgroundColor(this.tk().accent)
+            .opacity(this.allAnswered() ? 1 : 0.45)
+            .borderRadius(9).layoutWeight(1)
             .enabled(this.allAnswered())
             .onClick(() => this.submit())
         }

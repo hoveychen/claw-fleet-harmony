@@ -115,7 +115,7 @@ export struct RepoDetailView {
   header() {
     Row() {
       Row({ space: 2 }) {
-        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 22, color: this.tk().accent })
         Text(t('仓库')).fontSize(15).fontColor(this.tk().accent)
       }
       .onClick(() => this.onBack())
@@ -203,15 +203,20 @@ export struct RepoDetailView {
       Button(this.busy === 'pull' ? t('拉取中…') : t('Pull'))
         .layoutWeight(1)
         .fontSize(14)
+        .fontWeight(600)
         .fontColor(this.tk().text)
-        .backgroundColor(this.tk().bgInput)
+        .backgroundColor(this.tk().bgCard)
+        .border({ width: 1, color: this.tk().border })
+        .borderRadius(9)
         .enabled(this.busy.length === 0 && this.client !== null)
         .onClick(() => this.runOp('pull'))
       Button(this.busy === 'push' ? t('推送中…') : t('Push'))
         .layoutWeight(1)
         .fontSize(14)
+        .fontWeight(600)
         .fontColor('#ffffff')
         .backgroundColor(this.tk().accent)
+        .borderRadius(9)
         .enabled(this.busy.length === 0 && this.client !== null)
         .onClick(() => this.runOp('push'))
     }

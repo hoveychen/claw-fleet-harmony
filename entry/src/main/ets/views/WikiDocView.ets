@@ -199,7 +199,7 @@ export struct WikiDocView {
   header() {
     Row({ space: 8 }) {
       Row({ space: 2 }) {
-        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 18, color: this.tk().accent })
         Text(t('返回')).fontSize(15).fontColor(this.tk().accent)
       }
       .onClick(() => this.goBack())
@@ -234,13 +234,12 @@ export struct WikiDocView {
           })
       }
       // 导出 / 分享: web uses navigator.share (⤴). The 元服务 SDK has no outbound
-      // share sheet, so this saves via DocumentViewPicker — but the share glyph
-      // aligns the affordance with the web's "导出 / 分享".
-      Icon({
-        src: $r('app.media.ic_share'),
-        iconSize: 18,
-        color: this.exporting ? this.tk().textDim : this.tk().accent,
-      })
+      // share sheet, so this saves via DocumentViewPicker — same "⤴" glyph as
+      // the web's .exportButton (18px, accent; dim while disabled).
+      Text(this.exporting ? '…' : '⤴')
+        .fontSize(18)
+        .fontColor(this.exporting ? this.tk().textDim : this.tk().accent)
+        .padding({ left: 6, right: 6, top: 4, bottom: 4 })
         .onClick(() => this.handleExport())
     }
     .width('100%')

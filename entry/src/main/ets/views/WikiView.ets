@@ -295,7 +295,7 @@ export struct WikiView {
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Icon({ src: $r('app.media.ic_chevron_right'), iconSize: 15, color: this.tk().textDim })
+      Icon({ src: $r('app.media.ic_chevron_right'), iconSize: 18, color: this.tk().textDim })
     }
     .width('100%')
     .padding(12)
@@ -319,7 +319,7 @@ export struct WikiView {
 
       Row({ space: 8 }) {
         Row({ space: 6 }) {
-          Icon({ src: $r('app.media.ic_search'), iconSize: 16, color: this.tk().textDim })
+          Icon({ src: $r('app.media.ic_search'), iconSize: 14, color: this.tk().textDim })
           TextInput({ text: this.query, placeholder: t('搜索标题 / 正文…') })
             .layoutWeight(1)
             .fontSize(14)
