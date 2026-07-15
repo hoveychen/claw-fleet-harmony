@@ -1725,6 +1725,7 @@ struct QuestionsCard {
         TextArea({ text: this.form.get(field.name) ?? '', placeholder: field.placeholder ?? '' })
           .fontSize(13).fontColor(this.tk().text).placeholderColor(this.tk().textDim)
           .backgroundColor(this.tk().bgInput).borderRadius(8).width('100%')
+          .constraintSize({ minHeight: 40, maxHeight: 132 })
           .onChange((v: string) => this.setForm(field.name, v))
       } else if (field.kind === 'select') {
         Select((field.options ?? []).map((o: string) => {
@@ -1933,6 +1934,7 @@ struct QuestionsCard {
             .fontSize(13).fontColor(this.tk().text).placeholderColor(this.tk().textDim)
             .backgroundColor(Color.Transparent).padding({ left: 4, right: 4, top: 4, bottom: 4 })
             .borderRadius(0).layoutWeight(1)
+            .constraintSize({ minHeight: 32, maxHeight: 120 })
             .onChange((v: string) => this.setCustom(q, v))
         }
         .width('100%')

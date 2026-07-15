@@ -592,7 +592,9 @@ export struct NewSessionSheet {
         .width('100%')
         .onClick(() => this.onClose())
 
-      Column({ space: 10 }) {
+      Column() {
+        Scroll() {
+        Column({ space: 10 }) {
         Row() {
           Text(t('新会话'))
             .fontSize(17)
@@ -641,6 +643,9 @@ export struct NewSessionSheet {
                 Text(t('浏览…')).fontSize(13).fontColor(this.tk().text)
               }
             }
+              .height(40)
+              .borderRadius(8)
+              .padding({ left: 12, right: 12 })
               .backgroundColor(this.tk().bgInput)
               .enabled(this.client !== null)
               .onClick(() => {
@@ -698,13 +703,21 @@ export struct NewSessionSheet {
           }
         }
           .width('100%')
+          .height(46)
           .borderRadius(10)
           .backgroundColor(this.tk().accent)
           .enabled(this.canSubmit())
           .onClick(() => this.submit())
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 16, bottom: 16 + this.safeBottom })
+        }
+        .width('100%')
+        .align(Alignment.Top)
+        .edgeEffect(EdgeEffect.None)
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 16, bottom: 16 + this.safeBottom })
+      .constraintSize({ maxHeight: '82%' })
       .backgroundColor(this.tk().bgCard)
       .borderRadius({ topLeft: 16, topRight: 16 })
       .border({ width: { top: 1 }, color: this.tk().border })
@@ -965,6 +978,9 @@ export struct ResumeComposer {
               Text(this.buttonLabel()).fontSize(14).fontColor('#ffffff')
             }
           }
+            .height(44)
+            .borderRadius(10)
+            .padding({ left: 16, right: 16 })
             .backgroundColor(this.tk().accent)
             .enabled(this.submitEnabled())
             .onClick(() => this.submit())
