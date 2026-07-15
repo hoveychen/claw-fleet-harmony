@@ -41,6 +41,9 @@ interface DecisionReqId {
 @Component
 export struct MainShell {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  // Bumped by EntryAbility.onForeground — background freeze can strand the
+  // relay's reconnect timer, so every foreground nudges an unauthed client.
+  @StorageProp('fgNonce') @Watch('onForegroundNonce') fgNonce: number = 0;
   @StorageProp('lang') lang: string = 'zh';
   @StorageProp('safeTop') safeTop: number = 0;
   @StorageProp('safeBottom') safeBottom: number = 0;
@@ -413,6 +416,10 @@ export struct MainShell {
     .padding({ bottom: this.safeBottom })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { top: 1 }, color: this.tk().border })
+  }
+
+  onForegroundNonce(): void {
+    this.client?.kickNow('app foregrounded');
   }
 
   build() {
