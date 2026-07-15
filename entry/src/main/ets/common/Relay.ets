@@ -548,14 +548,25 @@ export class RelayClient {
     void this.sealAndSend(JSON.stringify(byeFrame));
   }
 
-  /// Answer a decision — mirrors mobile_relay::handle_answer's shapes. `fields`
-  /// is a JSON object serialised into the payload alongside {event,kind,id}.
-  /// `payload` is a fully-formed answer envelope (a declared interface instance
-  /// carrying {event:'answer', kind, id, …fields}); the decision views (P4) build
-  /// the concrete shape. Kept as `Object` because ArkTS bans dynamic `Record`
-  /// literals, so the merge happens on the caller side against a typed interface.
-  answer(payload: Object): void {
+  /// Answer a decision — mirrors mobile_relay::handle_answer's shapes and the web
+  /// relay's `answer`/`sendPayload`. `payload` is a fully-formed answer envelope
+  /// (a declared interface instance carrying {event:'answer', kind, id, …fields}).
+  /// Kept as `Object` because ArkTS bans dynamic `Record` literals, so the merge
+  /// happens on the caller side against a typed interface.
+  ///
+  /// Returns whether the socket was authed+open at call time — the sealed send
+  /// itself completes on a later microtask (sealing is async). Callers use this
+  /// to gate optimistic card removal: a `false` return means the frame was NOT
+  /// sent (channel down), so the card must stay put instead of vanishing into a
+  /// silent drop. If the send is lost after this point, the desktop's next
+  /// pending_snapshot reconcile brings the card back (see MainShell). This is the
+  /// exact contract the web client relies on (`if (client.answer(...)) …`).
+  answer(payload: Object): boolean {
+    if (!this.ws || !this.authed) {
+      return false;
+    }
     void this.sealAndSend(JSON.stringify(payload));
+    return true;
   }
 
   /// Data request to the agent (pending_snapshot / task_plans / …). `params` is

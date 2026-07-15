@@ -111,6 +111,22 @@ function emptyStrRecord(): Record<string, string> {
   return JSON.parse('{}') as Record<string, string>;
 }
 
+/// Submit an answer envelope, only removing the card when the frame actually
+/// reached the wire (`answer` returns true = socket authed+open at call time).
+/// A false return means the send was dropped (channel down), so the card stays
+/// put instead of vanishing into a silent no-op — the user can re-answer once
+/// reconnected, and MainShell's reconcile loop keeps the list truthful. Mirrors
+/// mobile-web DecisionsView's `if (client.answer(...)) onAnswered(id)`.
+function submitAnswer(client: RelayClient | null, payload: Object, id: string,
+  onAnswered: (id: string) => void): void {
+  if (!client) {
+    return;
+  }
+  if (client.answer(payload)) {
+    onAnswered(id);
+  }
+}
+
 // Relay request/response shapes for the guard AI risk analysis (guard_analyze).
 interface GuardAnalyzeParams {
   command: string;
@@ -783,8 +799,7 @@ struct GuardCard {
 
   private allow(): void {
     const a: GuardAnswer = { event: 'answer', kind: 'guard', id: this.request.id, allow: true };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private deny(): void {
@@ -795,8 +810,7 @@ struct GuardCard {
     const a: GuardAnswer = {
       event: 'answer', kind: 'guard', id: this.request.id, allow: false, reason: this.reason,
     };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private alwaysAllow(prefix: string): void {
@@ -804,8 +818,7 @@ struct GuardCard {
     const a: GuardAnswer = {
       event: 'answer', kind: 'guard', id: this.request.id, allow: true, alwaysAllow: rule,
     };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private onAlwaysAllowTap(): void {
@@ -954,8 +967,7 @@ struct PermissionCard {
 
   private allow(): void {
     const a: PermissionAnswer = { event: 'answer', kind: 'permission-prompt', id: this.request.id, allow: true };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private deny(): void {
@@ -966,8 +978,7 @@ struct PermissionCard {
     const a: PermissionAnswer = {
       event: 'answer', kind: 'permission-prompt', id: this.request.id, allow: false, reason: this.reason,
     };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   build() {
@@ -1067,16 +1078,12 @@ struct PlanCard {
   }
 
   private approve(): void {
-    if (this.isEdited()) {
-      const a: PlanAnswer = {
-        event: 'answer', kind: 'plan-approval', id: this.request.id, decision: 'approve', editedPlan: this.editedPlan,
-      };
-      this.client?.answer(a);
-    } else {
-      const a: PlanAnswer = { event: 'answer', kind: 'plan-approval', id: this.request.id, decision: 'approve' };
-      this.client?.answer(a);
-    }
-    this.onAnswered(this.request.id);
+    const a: PlanAnswer = this.isEdited()
+      ? {
+          event: 'answer', kind: 'plan-approval', id: this.request.id, decision: 'approve', editedPlan: this.editedPlan,
+        }
+      : { event: 'answer', kind: 'plan-approval', id: this.request.id, decision: 'approve' };
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private reject(): void {
@@ -1087,8 +1094,7 @@ struct PlanCard {
     const a: PlanAnswer = {
       event: 'answer', kind: 'plan-approval', id: this.request.id, decision: 'reject', feedback: this.feedback,
     };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private toggleEditing(): void {
@@ -1204,8 +1210,7 @@ struct A2uiCard {
     const a: A2uiAnswer = {
       event: 'answer', kind: 'a2ui-render', id: this.request.id, cancelled: true, actionContext: emptyStrRecord(),
     };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   build() {
@@ -1603,8 +1608,7 @@ struct QuestionsCard {
     const a: QuestionsAnswer = this.isFleetAsk
       ? { event: 'answer', kind: 'fleet-ask', id: this.request.id, cancelled: true, answers: emptyStrRecord() }
       : { event: 'answer', kind: 'elicitation', id: this.request.id, declined: true, answers: emptyStrRecord() };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   private submit(): void {
@@ -1644,8 +1648,7 @@ struct QuestionsCard {
     const a: QuestionsAnswer = this.isFleetAsk
       ? { event: 'answer', kind: 'fleet-ask', id: this.request.id, cancelled: false, answers }
       : { event: 'answer', kind: 'elicitation', id: this.request.id, declined: false, answers };
-    this.client?.answer(a);
-    this.onAnswered(this.request.id);
+    submitAnswer(this.client, a, this.request.id, this.onAnswered);
   }
 
   /// web .optionSideBtn: 34vp-wide bordered box flanking the option card,

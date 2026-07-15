@@ -7,6 +7,7 @@ import { t } from '../common/I18n';
 import { RelayClient, DeviceInfo, RelayHandlers } from '../common/Relay';
 import { MockRelayClient } from '../common/MockRelay';
 import { RelayStore } from '../common/RelayStore';
+import { reconcileDecisions, ReconcileResult } from '../common/DecisionReconcile';
 import { loadClientId, deviceLabel, DEVICE_PLATFORM } from '../common/Device';
 import { SessionInfo, PendingDecision, PendingSnapshot, DecisionRequest, DecisionKind, TodayUsage } from '../models/Types';
 import { GuardRequest, ElicitationRequest, FleetAskRequest } from '../models/Types';
@@ -30,6 +31,14 @@ import { CAPSULE_INSET_RIGHT, HEADER_HEIGHT } from '../common/SafeArea';
 interface DecisionReqId {
   id: string;
 }
+
+/// Foreground fallback reconcile cadence for pending decisions. `decision_resolved`
+/// is a best-effort agent→client broadcast (no ack, no retry); a missed frame
+/// would otherwise strand a card. While cards are pending and the desktop is
+/// online we re-pull the authoritative snapshot on this interval so a card
+/// answered elsewhere clears — and a card whose local answer was lost returns.
+/// Mirrors mobile-web App.tsx's DECISION_RECONCILE_INTERVAL_MS.
+const DECISION_RECONCILE_INTERVAL_MS = 3000;
 
 /// The paired-state app shell: a top header, the active tab body, and a bottom
 /// bar of 4 tabs split around a center "新会话" FAB. Mirrors mobile-web's App
@@ -90,6 +99,12 @@ export struct MainShell {
   private clientId: string = '';
   // Generation counter cancelling the today_usage poll loop across reconnects.
   private usageGen: number = 0;
+  // ids answered on THIS device whose answer is still in flight → timestamp.
+  // Suppresses a just-answered card from flickering back when a lagging snapshot
+  // reconcile runs before the desktop confirms (peer of App.tsx's answeredRef).
+  private answeredAt: Map<string, number> = new Map<string, number>();
+  // Generation counter cancelling the decision-reconcile poll loop.
+  private reconcileGen: number = 0;
   // Root back-guard state: back on the 决策 tab arms "再按一次返回退出" for 2s.
   private exitArmed: boolean = false;
   private exitTimer: number = -1;
@@ -179,8 +194,10 @@ export struct MainShell {
         if (online) {
           this.refreshPending();
           this.startUsagePoll();
+          this.startDecisionReconcile();
         } else {
           this.usageGen += 1; // cancel the poll loop
+          this.reconcileGen += 1; // cancel the reconcile loop
         }
       },
       onSessions: (list: SessionInfo[]) => {
@@ -235,7 +252,19 @@ export struct MainShell {
     this.decisions = this.decisions.concat(entry);
   }
 
+  /// Local answer sent from this device: drop the card now (optimistic) and
+  /// remember the id so a lagging snapshot can't resurrect it before the desktop
+  /// confirms. If the answer frame was actually lost, reconcileDecisions lets the
+  /// card back after ANSWER_GRACE_MS. Peer of App.tsx's markAnswered.
+  private markAnswered(id: string): void {
+    this.answeredAt.set(id, Date.now());
+    this.removeDecision(id);
+  }
+
   private removeDecision(id: string): void {
+    // Authoritative resolution (desktop / another device) makes the in-flight
+    // bookkeeping moot — clear it so it can't linger.
+    this.answeredAt.delete(id);
     this.decisions = this.decisions.filter((d: PendingDecision) => d.id !== id);
   }
 
@@ -270,6 +299,30 @@ export struct MainShell {
     tick();
   }
 
+  /// Foreground fallback reconcile: while the desktop is online and cards are
+  /// pending, re-pull the authoritative snapshot on a fixed cadence. Covers a
+  /// missed `decision_resolved` (a card answered elsewhere clears within one
+  /// interval instead of stranding) and a lost local answer frame (the card
+  /// returns after ANSWER_GRACE_MS so Boss can re-answer). A generation counter
+  /// cancels stale loops; the loop idles cheaply when no cards are pending.
+  private startDecisionReconcile(): void {
+    this.reconcileGen += 1;
+    const gen = this.reconcileGen;
+    const tick = () => {
+      if (gen !== this.reconcileGen) {
+        return;
+      }
+      const client = this.client;
+      if (client && client.isAuthed && this.agentOnline && this.decisions.length > 0) {
+        this.refreshPending();
+      }
+      if (gen === this.reconcileGen) {
+        setTimeout(tick, DECISION_RECONCILE_INTERVAL_MS);
+      }
+    };
+    setTimeout(tick, DECISION_RECONCILE_INTERVAL_MS);
+  }
+
   /// Pull the authoritative pending snapshot and replace the list, preserving
   /// each card's original arrival stamp so a refresh doesn't reshuffle order.
   private refreshPending(): void {
@@ -291,7 +344,17 @@ export struct MainShell {
         this.collectKind('plan-approval', (snap.planApproval ?? []) as DecisionRequest[], fresh, prevArrived, now);
         this.collectKind('permission-prompt', (snap.permissionPrompt ?? []) as DecisionRequest[], fresh, prevArrived, now);
         this.collectKind('a2ui-render', (snap.a2uiRender ?? []) as DecisionRequest[], fresh, prevArrived, now);
-        this.decisions = fresh;
+        // Snapshot is authoritative, but a card answered on this device whose
+        // answer is still in flight must not pop back in — reconcileDecisions
+        // suppresses it until confirmed gone, or the grace window lapses.
+        const result: ReconcileResult = reconcileDecisions({
+          prev: this.decisions,
+          fresh,
+          answeredAt: this.answeredAt,
+          now,
+        });
+        this.answeredAt = result.answeredAt;
+        this.decisions = result.decisions;
       })
       .catch((_e: Object) => {
         // agent offline — live events will catch us up later
@@ -521,7 +584,7 @@ export struct MainShell {
             sessions: this.sessions,
             client: this.client,
             onAnswered: (id: string) => {
-              this.removeDecision(id);
+              this.markAnswered(id);
             },
             onOpenSession: (s: SessionInfo) => {
               this.selectedSession = s;
