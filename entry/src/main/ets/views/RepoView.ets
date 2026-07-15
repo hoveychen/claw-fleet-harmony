@@ -14,6 +14,7 @@ import { Icon } from '../common/Icon';
 export struct RepoView {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
+  @StorageProp('safeTop') safeTop: number = 0;
 
   client: RelayClient | null = null;
   onBack: () => void = () => {};
@@ -62,8 +63,8 @@ export struct RepoView {
       Text('⟳').fontSize(18).fontColor(this.tk().text).onClick(() => this.refresh())
     }
     .width('100%')
-    .height(48)
-    .padding({ left: 12, right: 12 })
+    .height(48 + this.safeTop)
+    .padding({ left: 12, right: 12, top: this.safeTop })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }

@@ -39,6 +39,8 @@ interface DecisionReqId {
 export struct MainShell {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
+  @StorageProp('safeTop') safeTop: number = 0;
+  @StorageProp('safeBottom') safeBottom: number = 0;
   @State tab: string = 'decisions';
   onRepair: () => void = () => {};
   onNewSession: () => void = () => {};
@@ -291,8 +293,8 @@ export struct MainShell {
       }
     }
     .width('100%')
-    .height(48)
-    .padding({ left: 16, right: 16 })
+    .height(48 + this.safeTop)
+    .padding({ left: 16, right: 16, top: this.safeTop })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }
@@ -355,7 +357,8 @@ export struct MainShell {
       this.tabItem('more', $r('app.media.ic_ellipsis'), t('更多'), 0)
     }
     .width('100%')
-    .height(60)
+    .height(60 + this.safeBottom)
+    .padding({ bottom: this.safeBottom })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { top: 1 }, color: this.tk().border })
   }

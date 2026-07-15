@@ -31,6 +31,7 @@ function fmtTime(sec: number | null | undefined): string {
 export struct RepoDetailView {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
+  @StorageProp('safeTop') safeTop: number = 0;
 
   repo: RepoSummary = {} as RepoSummary;
   client: RelayClient | null = null;
@@ -128,8 +129,8 @@ export struct RepoDetailView {
       Text('').width(40)
     }
     .width('100%')
-    .height(52)
-    .padding({ left: 12, right: 12 })
+    .height(52 + this.safeTop)
+    .padding({ left: 12, right: 12, top: this.safeTop })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }

@@ -311,6 +311,7 @@ struct AttachmentBar {
 export struct NewSessionSheet {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   @Prop sessions: SessionInfo[] = [];
   client: RelayClient | null = null;
@@ -632,7 +633,7 @@ export struct NewSessionSheet {
           .onClick(() => this.submit())
       }
       .width('100%')
-      .padding(16)
+      .padding({ left: 16, right: 16, top: 16, bottom: 16 + this.safeBottom })
       .backgroundColor(this.tk().bgCard)
       .borderRadius({ topLeft: 16, topRight: 16 })
       .border({ width: { top: 1 }, color: this.tk().border })
@@ -667,6 +668,7 @@ export struct NewSessionSheet {
 export struct ResumeComposer {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
+  @StorageProp('safeBottom') safeBottom: number = 0;
 
   session: SessionInfo = {} as SessionInfo;
   client: RelayClient | null = null;
@@ -892,7 +894,7 @@ export struct ResumeComposer {
         .width('100%')
       }
       .width('100%')
-      .padding(12)
+      .padding({ left: 12, right: 12, top: 12, bottom: 12 + this.safeBottom })
       .backgroundColor(this.tk().bgCard)
       .border({ width: { top: 1 }, color: this.tk().border })
     }

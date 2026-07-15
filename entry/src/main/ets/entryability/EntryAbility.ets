@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 import { initTheme, setSystemDark } from '../common/Theme';
 import { initI18n } from '../common/I18n';
 import { selfTest } from '../common/RelayCrypto';
+import { initSafeArea } from '../common/SafeArea';
 
 const DOMAIN = 0x0000;
 const TAG = 'fleet';
@@ -43,5 +44,10 @@ export default class EntryAbility extends UIAbility {
         hilog.error(DOMAIN, TAG, 'loadContent failed: %{public}s', JSON.stringify(err));
       }
     });
+    // Publish the system avoid-area insets (status-bar band incl. the menu
+    // capsule + bottom gesture bar) so every header reserves them. The atomic
+    // service window is full-screen immersive, so without this the top-of-screen
+    // headers render under the capsule / status bar.
+    initSafeArea(this.context);
   }
 }

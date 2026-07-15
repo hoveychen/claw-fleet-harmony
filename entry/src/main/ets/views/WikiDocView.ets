@@ -64,6 +64,7 @@ function fmtVersion(ms: number): string {
 export struct WikiDocView {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @StorageProp('lang') lang: string = 'zh';
+  @StorageProp('safeTop') safeTop: number = 0;
 
   doc: WikiDoc = {} as WikiDoc;
   client: RelayClient | null = null;
@@ -230,8 +231,8 @@ export struct WikiDocView {
         .onClick(() => this.handleExport())
     }
     .width('100%')
-    .height(52)
-    .padding({ left: 12, right: 12 })
+    .height(52 + this.safeTop)
+    .padding({ left: 12, right: 12, top: this.safeTop })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }
