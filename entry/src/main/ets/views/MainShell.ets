@@ -1,5 +1,7 @@
 import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { setRootBackHandler } from '../common/BackStack';
 import { t } from '../common/I18n';
 import { RelayClient, DeviceInfo, RelayHandlers } from '../common/Relay';
 import { RelayStore } from '../common/RelayStore';
@@ -78,6 +80,9 @@ export struct MainShell {
   private clientId: string = '';
   // Generation counter cancelling the today_usage poll loop across reconnects.
   private usageGen: number = 0;
+  // Root back-guard state: back on the 决策 tab arms "再按一次返回退出" for 2s.
+  private exitArmed: boolean = false;
+  private exitTimer: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
@@ -88,6 +93,9 @@ export struct MainShell {
   }
 
   aboutToAppear(): void {
+    // Own the root back behaviour while the shell is up (the pairing gate keeps
+    // the default "exit" handler). No overlay open + back = tab/exit logic below.
+    setRootBackHandler((): boolean => this.handleRootBack());
     loadClientId(this.ctx())
       .then((id: string) => {
         this.clientId = id;
@@ -101,10 +109,39 @@ export struct MainShell {
   }
 
   aboutToDisappear(): void {
+    setRootBackHandler((): boolean => false);
+    if (this.exitTimer !== -1) {
+      clearTimeout(this.exitTimer);
+      this.exitTimer = -1;
+    }
     if (this.client) {
       this.client.close();
       this.client = null;
     }
+  }
+
+  /// Back at the root (no overlay layer): off the 决策 tab → return to it;
+  /// on it → arm "再按一次返回退出" for 2s, exiting only on a second press within
+  /// the window (mirrors mobile-web's ExitGuard). Returns true to hold, false to
+  /// let the platform exit.
+  private handleRootBack(): boolean {
+    if (this.tab !== 'decisions') {
+      this.tab = 'decisions';
+      return true;
+    }
+    if (this.exitArmed) {
+      return false;
+    }
+    this.exitArmed = true;
+    promptAction.showToast({ message: t('再按一次返回退出'), duration: 2000 });
+    if (this.exitTimer !== -1) {
+      clearTimeout(this.exitTimer);
+    }
+    this.exitTimer = setTimeout(() => {
+      this.exitArmed = false;
+      this.exitTimer = -1;
+    }, 2000);
+    return true;
   }
 
   private deviceInfo(): DeviceInfo {

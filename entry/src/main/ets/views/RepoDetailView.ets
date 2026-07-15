@@ -1,5 +1,6 @@
 import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { RelayClient } from '../common/Relay';
 import { RepoSummary, RepoDetail, WorktreeHealth, CommitInfo, GitOpResult } from '../models/Types';
 import { Icon } from '../common/Icon';
@@ -42,13 +43,19 @@ export struct RepoDetailView {
   @State private error: string = '';
   @State private busy: string = ''; // '' | 'push' | 'pull'
   @State private opResult: GitOpResult | null = null;
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.onBack());
     this.refresh();
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   private refresh(): void {

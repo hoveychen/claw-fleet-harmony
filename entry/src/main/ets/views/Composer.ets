@@ -7,6 +7,7 @@ import { RelayClient, RelayRequestError } from '../common/Relay';
 import { SessionInfo } from '../models/Types';
 import { canResumeSession, canEnqueueSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { Icon } from '../common/Icon';
 import { loadDraftRaw, saveDraftRaw, clearDraft } from '../common/Draft';
 import { Attachment, pickAndUploadAttachments, withContextFiles } from '../common/FileTransfer';
@@ -324,9 +325,19 @@ export struct NewSessionSheet {
   @State private chatPath: string | null = null;
   @State private attachments: Attachment[] = [];
   @State private uploading: boolean = false;
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  /// Back inside the sheet: close the DirPicker sub-layer first, else the sheet.
+  private handleBack(): void {
+    if (this.picking) {
+      this.picking = false;
+    } else {
+      this.onClose();
+    }
   }
 
   private ctx(): common.UIAbilityContext {
@@ -377,6 +388,7 @@ export struct NewSessionSheet {
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.handleBack());
     // Restore the in-progress draft before anything else, so the form paints
     // with the user's last input. `effectiveKey()` reconciles a stale workspace
     // against the live recents list, so a vanished workspace just falls back.
@@ -398,6 +410,10 @@ export struct NewSessionSheet {
           this.chatPath = null;
         });
     }
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   /// Recent workspaces from the sessions snapshot, excluding the pure-chat one

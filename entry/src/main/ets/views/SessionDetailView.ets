@@ -12,6 +12,7 @@
 
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { t } from '../common/I18n';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
 import { EmptyState } from './EmptyState';
@@ -142,12 +143,14 @@ export struct SessionDetailView {
   private thinkGen: number = 0;
   private thinkTimer: number = -1;
   private scroller: Scroller = new Scroller();
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.onBack());
     if (this.client !== null && this.tab === 'messages') {
       this.startMessagePoll();
       this.startThinkPoll();
@@ -155,6 +158,7 @@ export struct SessionDetailView {
   }
 
   aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
     this.stopMessagePoll();
     this.stopThinkPoll();
   }

@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { RelayStore } from '../common/RelayStore';
 import { registerForPush } from '../common/PushRegister';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { handleBack } from '../common/BackStack';
 import { GateView } from '../views/GateView';
 import { MainShell } from '../views/MainShell';
 
@@ -28,6 +29,13 @@ struct Index {
 
   aboutToAppear(): void {
     this.init();
+  }
+
+  /// Route the system back event (hardware key / navigation gesture) through the
+  /// shared back stack. true = consumed (overlay closed / tab switched / exit
+  /// armed); false = let the platform background or exit the app.
+  onBackPress(): boolean {
+    return handleBack();
   }
 
   private async init(): Promise<void> {

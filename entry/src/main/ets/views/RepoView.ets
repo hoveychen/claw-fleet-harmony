@@ -1,5 +1,6 @@
 import { t } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { RelayClient } from '../common/Relay';
 import { RepoSummary } from '../models/Types';
 import { EmptyState } from './EmptyState';
@@ -23,13 +24,19 @@ export struct RepoView {
 
   @State private repos: RepoSummary[] | null = null;
   @State private error: string = '';
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.onBack());
     this.refresh();
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   private refresh(): void {
