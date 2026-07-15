@@ -24,7 +24,7 @@ export interface MdSpan {
   href: string;
 }
 
-export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table';
+export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table' | 'quote';
 
 /// A GFM pipe table. `aligns[c]` is the column alignment (-1 left / 0 centre /
 /// 1 right); `header` is the header row's cells, each a run of inline spans;
@@ -146,6 +146,8 @@ function isBlockStart(trimmed: string): boolean {
     || trimmed.startsWith('#')
     || trimmed.startsWith('- ')
     || trimmed.startsWith('* ')
+    || trimmed.startsWith('> ')
+    || trimmed === '>'
     || orderedMarker(trimmed) >= 0;
 }
 
@@ -288,6 +290,23 @@ export function parseBlocks(md: string): MdBlock[] {
       olCounter = 0;
       continue;
     }
+    if (trimmed.startsWith('> ') || trimmed === '>') {
+      const buf: string[] = [];
+      while (i < lines.length) {
+        const qt = lines[i].trim();
+        if (qt.startsWith('> ')) {
+          buf.push(qt.substring(2));
+        } else if (qt === '>') {
+          buf.push('');
+        } else {
+          break;
+        }
+        i++;
+      }
+      out.push({ kind: 'quote', spans: parseInline(buf.join(' ').trim()), code: '', ordinal: 0 });
+      olCounter = 0;
+      continue;
+    }
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
       out.push({ kind: 'li-ul', spans: parseInline(trimmed.substring(2)), code: '', ordinal: 0 });
       i++;
@@ -418,6 +437,22 @@ export struct MarkdownView {
         .padding(8)
         .borderRadius(6)
         .backgroundColor(this.tk().bgInput)
+    } else if (b.kind === 'quote') {
+      Text() {
+        ForEach(b.spans, (s: MdSpan) => {
+          Span(s.text)
+            .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
+            .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
+            .fontColor(this.spanColor(s))
+        })
+      }
+      .fontSize(this.mdFontSize)
+      .fontColor(this.tk().textSecondary)
+      .width('100%')
+      .padding({ left: 12, right: 8, top: 6, bottom: 6 })
+      .border({ width: { left: 3 }, color: { left: this.tk().accent } })
+      .backgroundColor(this.tk().bgInput)
+      .borderRadius(4)
     } else if (b.kind === 'h1' || b.kind === 'h2' || b.kind === 'h3') {
       Text() {
         ForEach(b.spans, (s: MdSpan) => {
