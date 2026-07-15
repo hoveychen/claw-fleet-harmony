@@ -1,5 +1,6 @@
 import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { RelayClient } from '../common/Relay';
 import { RepoSummary, RepoDetail, WorktreeHealth, CommitInfo, GitOpResult } from '../models/Types';
 import { Icon } from '../common/Icon';
@@ -42,13 +43,19 @@ export struct RepoDetailView {
   @State private error: string = '';
   @State private busy: string = ''; // '' | 'push' | 'pull'
   @State private opResult: GitOpResult | null = null;
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.onBack());
     this.refresh();
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   private refresh(): void {
@@ -125,9 +132,9 @@ export struct RepoDetailView {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
-      .alignItems(HorizontalAlign.Center)
+      .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text('').width(40)
+      .margin({ left: 8 })
     }
     .width('100%')
     .height(HEADER_HEIGHT)
@@ -145,10 +152,15 @@ export struct RepoDetailView {
   chip(text: string, tone: string) {
     Text(text)
       .fontSize(11)
-      .fontColor(tone === 'warn' ? this.tk().warning : (tone === 'ok' ? this.tk().success : this.tk().textSecondary))
+      .fontColor(tone === 'warn'
+        ? this.tk().warning
+        : (tone === 'ok'
+          ? this.tk().success
+          : (tone === 'muted' ? this.tk().textDim : this.tk().textSecondary)))
       .backgroundColor(this.tk().bgInput)
       .padding({ left: 7, right: 7, top: 2, bottom: 2 })
       .borderRadius(6)
+      .margin({ left: 6 })
   }
 
   @Builder
@@ -164,12 +176,8 @@ export struct RepoDetailView {
       Row() {
         Text(t('未推 / 落后')).fontSize(14).fontColor(this.tk().textSecondary).layoutWeight(1)
         Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End }) {
-          if ((d.unpushed ?? 0) > 0) {
-            this.chip(t('未推 {0}', d.unpushed ?? 0), 'warn')
-          }
-          if ((d.behind ?? 0) > 0) {
-            this.chip(t('落后 {0}', d.behind ?? 0), 'info')
-          }
+          this.chip(t('未推 {0}', d.unpushed ?? 0), (d.unpushed ?? 0) > 0 ? 'warn' : 'muted')
+          this.chip(t('落后 {0}', d.behind ?? 0), (d.behind ?? 0) > 0 ? 'info' : 'muted')
           if (d.dirtyCount > 0) {
             this.chip(t('脏 {0}', d.dirtyCount), 'info')
           }

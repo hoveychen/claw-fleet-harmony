@@ -111,6 +111,8 @@ const ENTRIES: [string, string][] = [
   ['重新配对 / 清除密钥', 'Re-pair / clear secret'],
   ['清除本机配对密钥？需回到桌面端重新扫码才能再连接。',
     'Clear the local pairing secret? You\'ll need to re-scan on the desktop to reconnect.'],
+  ['尚未配对，请先扫码配对后再开启通知。', 'Not paired yet — scan to pair first, then enable notifications.'],
+  ['订阅推送失败，请稍后重试。', 'Failed to subscribe to push — please try again later.'],
   ['关于', 'About'],
 
   // ── 知识库 ──
@@ -404,6 +406,7 @@ const ENTRIES: [string, string][] = [
   ['桌面端离线，拿不到今日用量。', 'Desktop offline — today\'s usage is unavailable.'],
   ['今日累计', 'Today'],
   ['{0} 输出 token', '{0} output tokens'],
+  ['{0} token', '{0} token'],
   ['会话花费', 'Agent sessions'],
   ['Fleet 自身花费', 'Fleet itself'],
   ['{0} 个会话', '{0} sessions'],

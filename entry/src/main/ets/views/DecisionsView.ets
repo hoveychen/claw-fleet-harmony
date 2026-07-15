@@ -8,9 +8,12 @@ import {
   PendingDecision, SessionInfo,
   GuardRequest, PlanApprovalRequest, PermissionPromptRequest, A2uiRenderRequest, FleetAskRequest,
   FleetAskQuestion, ElicitationOption, FleetAskFormField, FleetAskImage, CommandView, CommandLeaf,
+  CmdConnector, NestedScript,
   RawMessage, ContentBlock,
 } from '../models/Types';
 import { EmptyState } from './EmptyState';
+import { Attachment, pickAndUploadAttachments } from '../common/FileTransfer';
+import { common } from '@kit.AbilityKit';
 import { Icon } from '../common/Icon';
 
 /// The 决策 tab — native port of mobile-web/src/views/DecisionsView.tsx. Renders
@@ -116,6 +119,76 @@ interface GuardAnalyzeParams {
 interface GuardAnalyzeResp {
   analysis: string;
 }
+interface GuardTailParams {
+  path: string;
+  n: number;
+}
+
+/// Last non-sidechain assistant message's text, for guard AI-analysis context.
+/// Mirrors mobile-web DecisionsView.tsx `lastAssistantText`.
+function lastAssistantText(rows: RawMessage[]): string {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const msg = rows[i];
+    if (msg.type !== 'assistant' || msg.isSidechain === true) {
+      continue;
+    }
+    const content: string | ContentBlock[] | undefined = msg.message?.content;
+    if (typeof content === 'string') {
+      const trimmed = content.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+      continue;
+    }
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    const parts: string[] = [];
+    for (const b of content) {
+      if (b.type === 'text' && b.text !== undefined && b.text.trim().length > 0) {
+        parts.push(b.text);
+      }
+    }
+    const text = parts.join('\n\n');
+    if (text.length > 0) {
+      return text;
+    }
+  }
+  return '';
+}
+
+/// Pull up to 8 text/label/title strings out of an A2UI messageTree so the
+/// mobile card can at least show what the (unrenderable) surface says. Mirrors
+/// mobile-web DecisionsView.tsx `extractA2uiTexts`.
+function extractA2uiTexts(tree: Object | null | undefined, out: string[]): string[] {
+  if (out.length >= 8 || tree === null || tree === undefined || typeof tree !== 'object') {
+    return out;
+  }
+  if (Array.isArray(tree)) {
+    for (const item of tree as Object[]) {
+      extractA2uiTexts(item, out);
+      if (out.length >= 8) {
+        break;
+      }
+    }
+    return out;
+  }
+  const rec = tree as Record<string, Object>;
+  for (const key of Object.keys(rec)) {
+    if (out.length >= 8) {
+      break;
+    }
+    const value = rec[key];
+    if (typeof value === 'string') {
+      if ((key === 'text' || key === 'label' || key === 'title') && value.trim().length > 0) {
+        out.push(value.trim());
+      }
+    } else {
+      extractA2uiTexts(value, out);
+    }
+  }
+  return out;
+}
 
 // Relay request/response shapes for a decision-card image asset (decision_asset).
 interface AssetParams {
@@ -220,7 +293,7 @@ interface NarrationTailParams {
   n: number;
 }
 
-const NARRATION_TAIL = 400;
+const NARRATION_TAIL = 200;
 const NARRATION_MAX_CHUNKS = 40;
 
 // Tool names whose *result* counts as user input (answering an ask card / plan),
@@ -367,8 +440,8 @@ struct PrecedingNarration {
             color: this.tk().textDim,
           })
           Text(this.expanded
-            ? t('Agent 过程中的说明')
-            : t('Agent 过程中还说了 {0} 段', this.chunks.length))
+            ? t('收起提问前的说明')
+            : t('Agent 干活时还说了 {0} 段话', this.chunks.length))
             .fontSize(11)
             .fontColor(this.tk().textDim)
         }
@@ -566,6 +639,7 @@ export struct DecisionsView {
           GuardCard({
             request: d.request as GuardRequest,
             client: this.client,
+            jsonlPath: this.sessionFor((d.request as GuardRequest).sessionId)?.jsonlPath ?? '',
             onAnswered: this.onAnswered,
           })
         } else if (d.kind === 'permission-prompt') {
@@ -615,7 +689,7 @@ export struct DecisionsView {
           })
         } else {
           EmptyState({
-            iconRes: $r('app.media.ic_wifi_off'),
+            iconRes: $r('app.media.ic_cloud_off'),
             title: t('桌面端离线'),
             subtitle: t('暂时收不到新决策，等桌面端重新上线就会同步过来。'),
           })
@@ -654,6 +728,7 @@ struct GuardCard {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   request: GuardRequest = {} as GuardRequest;
   client: RelayClient | null = null;
+  jsonlPath: string = '';
   onAnswered: (id: string) => void = () => {};
 
   @State private reason: string = '';
@@ -672,16 +747,29 @@ struct GuardCard {
       this.analysis = 'unavailable';
       return;
     }
-    // Context is best-effort; the mobile client hasn't loaded the transcript
-    // tail here, so we send the command alone (the desktop still classifies it).
-    const params: GuardAnalyzeParams = { command: this.request.command, context: '', lang: getLang() };
-    client.request<GuardAnalyzeResp>('guard_analyze', params, 40000)
-      .then((r: GuardAnalyzeResp) => {
-        this.analysis = r.analysis.length > 0 ? r.analysis : 'unavailable';
-      })
-      .catch((_e: Object) => {
-        this.analysis = 'unavailable';
-      });
+    this.runAnalysis(client);
+  }
+
+  private async runAnalysis(client: RelayClient): Promise<void> {
+    // Best-effort transcript context: tail the last 20 messages and pass the
+    // most recent assistant text so the desktop LLM classifies with context.
+    let context = '';
+    if (this.jsonlPath.length > 0) {
+      try {
+        const tp: GuardTailParams = { path: this.jsonlPath, n: 20 };
+        const rows = await client.request<RawMessage[]>('tail', tp, 40000);
+        context = lastAssistantText(rows ?? []);
+      } catch (_e) {
+        // context is best-effort
+      }
+    }
+    const params: GuardAnalyzeParams = { command: this.request.command, context, lang: getLang() };
+    try {
+      const r = await client.request<GuardAnalyzeResp>('guard_analyze', params, 40000);
+      this.analysis = r.analysis.length > 0 ? r.analysis : 'unavailable';
+    } catch (_e) {
+      this.analysis = 'unavailable';
+    }
   }
 
   private prefixes(): string[] {
@@ -753,14 +841,10 @@ struct GuardCard {
 
   build() {
     Column({ space: 10 }) {
-      Text(this.request.command)
-        .fontSize(13)
-        .fontColor(this.tk().text)
-        .fontFamily('monospace')
-        .width('100%')
-        .padding(10)
-        .borderRadius(8)
-        .backgroundColor(this.tk().bgInput)
+      StructuredCommandView({
+        command: this.request.command,
+        view: this.request.structuredCommand ?? null,
+      })
       if (this.request.riskTags.length > 0) {
         Flex({ wrap: FlexWrap.Wrap }) {
           ForEach(this.request.riskTags, (tag: string) => {
@@ -1037,11 +1121,14 @@ struct PlanCard {
             })
         }
       }
-      Text(this.editing ? t('放弃编辑') : t('编辑计划'))
-        .fontSize(12)
-        .fontColor(this.tk().textSecondary)
-        .padding({ top: 4, bottom: 4 })
-        .onClick(() => this.toggleEditing())
+      Row({ space: 4 }) {
+        Icon({ src: $r('app.media.ic_pencil'), iconSize: 12, color: this.tk().textSecondary })
+        Text(this.editing ? t('放弃编辑') : t('编辑计划'))
+          .fontSize(12)
+          .fontColor(this.tk().textSecondary)
+      }
+      .padding({ top: 4, bottom: 4 })
+      .onClick(() => this.toggleEditing())
       if (this.rejecting) {
         TextArea({ text: this.feedback, placeholder: t('驳回意见（会转告给 AI 修改计划）') })
           .fontSize(13)
@@ -1093,6 +1180,10 @@ struct A2uiCard {
     return themeTokens(this.resolvedTheme);
   }
 
+  private texts(): string[] {
+    return extractA2uiTexts(this.request.messageTree, []);
+  }
+
   private cancel(): void {
     if (!this.cancelling) {
       this.cancelling = true;
@@ -1112,6 +1203,22 @@ struct A2uiCard {
         .fontColor(this.tk().textSecondary)
         .lineHeight(19)
         .width('100%')
+      if (this.texts().length > 0) {
+        Column({ space: 4 }) {
+          ForEach(this.texts(), (line: string) => {
+            Row({ space: 6 }) {
+              Text('·').fontSize(13).fontColor(this.tk().textDim)
+              Text(truncate(line, 120)).fontSize(12).fontColor(this.tk().textSecondary).layoutWeight(1)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
+          })
+        }
+        .width('100%')
+        .padding(8)
+        .borderRadius(6)
+        .backgroundColor(this.tk().bgInput)
+      }
       Row() {
         Button(this.cancelling ? t('确认取消这张卡') : t('取消（告知 agent）'))
           .fontSize(14)
@@ -1126,6 +1233,166 @@ struct A2uiCard {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
+  }
+}
+
+// ── structured command AST (guard card) ─────────────────────────────────────
+// Mobile port of the desktop StructuredCommandView: one row per executable leaf,
+// connector badges between rows, "audit" badge on triggering leaves, nested
+// scripts (bash -c / eval / …) indented recursively.
+
+function connectorSymbol(c: CmdConnector): string {
+  if (c === 'and') {
+    return '&&';
+  }
+  if (c === 'or') {
+    return '||';
+  }
+  if (c === 'pipe') {
+    return '|';
+  }
+  return ';';
+}
+
+function nestedLabelKey(kind: string): string {
+  if (kind === 'bash-c') {
+    return 'bash -c 内嵌脚本';
+  }
+  if (kind === 'sh-c') {
+    return 'sh -c 内嵌脚本';
+  }
+  if (kind === 'zsh-c') {
+    return 'zsh -c 内嵌脚本';
+  }
+  if (kind === 'python-c') {
+    return 'python -c 内嵌代码';
+  }
+  if (kind === 'node-e') {
+    return 'node -e 内嵌代码';
+  }
+  if (kind === 'eval') {
+    return 'eval 内嵌脚本';
+  }
+  return '内嵌脚本';
+}
+
+function isOpaqueScript(kind: string): boolean {
+  return kind === 'python-c' || kind === 'node-e';
+}
+
+@Component
+struct StructuredCommandView {
+  @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  command: string = '';
+  view: CommandView | null = null;
+
+  private tk(): ColorTokens {
+    return themeTokens(this.resolvedTheme);
+  }
+
+  private visibleArgv(leaf: CommandLeaf): string[] {
+    // When a leaf carries a nested script the last argv entry is the raw script
+    // itself — the nested block renders it, so drop it here.
+    return (leaf.nested !== undefined && leaf.nested !== null && leaf.argv.length > 0)
+      ? leaf.argv.slice(0, leaf.argv.length - 1)
+      : leaf.argv;
+  }
+
+  private leafIndices(v: CommandView): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < v.leaves.length; i++) {
+      out.push(i);
+    }
+    return out;
+  }
+
+  private tokenIndices(n: number): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push(i);
+    }
+    return out;
+  }
+
+  @Builder
+  nestedBlock(n: NestedScript) {
+    Column({ space: 4 }) {
+      Text(t(nestedLabelKey(n.kind)))
+        .fontSize(11).fontColor(this.tk().textDim).width('100%')
+      if (isOpaqueScript(n.kind)) {
+        Text(n.raw)
+          .fontSize(12).fontColor(this.tk().textSecondary).fontFamily('monospace').width('100%')
+      } else {
+        StructuredCommandView({ command: '', view: n.view })
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 10, top: 6 })
+    .margin({ top: 4 })
+    .border({ width: { left: 2 }, color: this.tk().border })
+  }
+
+  @Builder
+  leafRow(leaf: CommandLeaf) {
+    Column({ space: 4 }) {
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(this.tokenIndices(this.visibleArgv(leaf).length), (j: number) => {
+          Text(this.visibleArgv(leaf)[j])
+            .fontSize(13)
+            .fontFamily('monospace')
+            .fontColor(j === 0 ? this.tk().text : this.tk().textSecondary)
+            .fontWeight(j === 0 ? FontWeight.Medium : FontWeight.Normal)
+            .margin({ right: 6 })
+        }, (j: number) => `${j}`)
+        if (leaf.triggering === true) {
+          Text(leaf.already_allowed === true ? t('触发审计 · 已有规则') : t('触发审计'))
+            .fontSize(10)
+            .fontColor(leaf.already_allowed === true ? this.tk().textSecondary : this.tk().warning)
+            .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+            .borderRadius(4)
+            .backgroundColor(this.tk().accentSoft)
+        }
+      }
+      .width('100%')
+      if (leaf.nested !== undefined && leaf.nested !== null) {
+        this.nestedBlock(leaf.nested)
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding(8)
+    .borderRadius(6)
+    .backgroundColor(leaf.triggering === true ? this.tk().accentSoft : this.tk().bgCard)
+  }
+
+  @Builder
+  viewBody(v: CommandView) {
+    Column({ space: 4 }) {
+      ForEach(this.leafIndices(v), (i: number) => {
+        if (i > 0) {
+          Text(connectorSymbol(v.connectors[i - 1]))
+            .fontSize(12).fontFamily('monospace').fontColor(this.tk().textDim)
+            .padding({ left: 4 })
+        }
+        this.leafRow(v.leaves[i])
+      }, (i: number) => `${i}`)
+    }
+    .width('100%')
+  }
+
+  build() {
+    if (this.view === null || this.view.leaves.length === 0) {
+      Text(this.command)
+        .fontSize(13).fontColor(this.tk().text).fontFamily('monospace').width('100%')
+        .padding(10).borderRadius(8).backgroundColor(this.tk().bgInput)
+    } else {
+      Column() {
+        this.viewBody(this.view)
+      }
+      .width('100%')
+      .padding(10).borderRadius(8).backgroundColor(this.tk().bgInput)
+    }
   }
 }
 
@@ -1149,9 +1416,62 @@ struct QuestionsCard {
   @State private form: Map<string, string> = new Map<string, string>();
   @State private step: number = 0;
   @State private error: string = '';
+  // question text → uploaded attachments (appended as @path to that answer)
+  @State private attachByQ: Map<string, Attachment[]> = new Map<string, Attachment[]>();
+  @State private uploadingQ: string = '';
+  // "q.questionoption.label" whose preview is currently expanded ('' = none)
+  @State private openPreview: string = '';
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private ctx(): common.UIAbilityContext {
+    return this.getUIContext().getHostContext() as common.UIAbilityContext;
+  }
+
+  private attachmentsFor(q: FleetAskQuestion): Attachment[] {
+    return this.attachByQ.get(q.question) ?? [];
+  }
+
+  private previewKey(q: FleetAskQuestion, o: ElicitationOption): string {
+    return `${q.question}${o.label}`;
+  }
+
+  private togglePreview(q: FleetAskQuestion, o: ElicitationOption): void {
+    const k = this.previewKey(q, o);
+    this.openPreview = this.openPreview === k ? '' : k;
+  }
+
+  private pickAttach(q: FleetAskQuestion): void {
+    const client = this.client;
+    if (!client || this.uploadingQ.length > 0) {
+      return;
+    }
+    this.uploadingQ = q.question;
+    pickAndUploadAttachments(client, this.ctx())
+      .then((picked: Attachment[]) => {
+        const next = new Map<string, Attachment[]>(this.attachByQ);
+        const cur = next.get(q.question) ?? [];
+        const merged = cur.slice();
+        for (const a of picked) {
+          if (!merged.some((x: Attachment) => x.path === a.path)) {
+            merged.push(a);
+          }
+        }
+        next.set(q.question, merged);
+        this.attachByQ = next;
+        this.uploadingQ = '';
+      })
+      .catch((_e: Object) => {
+        this.uploadingQ = '';
+      });
+  }
+
+  private removeAttach(q: FleetAskQuestion, path: string): void {
+    const next = new Map<string, Attachment[]>(this.attachByQ);
+    next.set(q.question, this.attachmentsFor(q).filter((a: Attachment) => a.path !== path));
+    this.attachByQ = next;
   }
 
   aboutToAppear(): void {
@@ -1173,6 +1493,14 @@ struct QuestionsCard {
 
   private total(): number {
     return this.request.questions.length;
+  }
+
+  private stepIndices(): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < this.total(); i++) {
+      out.push(i);
+    }
+    return out;
   }
 
   private qi(): number {
@@ -1244,7 +1572,8 @@ struct QuestionsCard {
         requiredOk = false;
       }
     }
-    const answered = picked.length > 0 || customText.length > 0 || fields.length > 0;
+    const answered = picked.length > 0 || customText.length > 0 || fields.length > 0
+      || this.attachmentsFor(q).length > 0;
     return answered && requiredOk;
   }
 
@@ -1272,6 +1601,9 @@ struct QuestionsCard {
       const customText = (this.custom.get(q.question) ?? '').trim();
       if (customText.length > 0) {
         parts.push(customText);
+      }
+      for (const a of this.attachmentsFor(q)) {
+        parts.push(`@${a.path}`);
       }
       const hasForm = (q.formFields?.length ?? 0) > 0;
       if (parts.length === 0 && !hasForm) {
@@ -1305,23 +1637,43 @@ struct QuestionsCard {
 
   @Builder
   optionRow(q: FleetAskQuestion, o: ElicitationOption) {
-    Row({ space: 8 }) {
-      Column({ space: 2 }) {
-        Text(o.label)
-          .fontSize(14)
-          .fontColor(this.tk().text)
-          .width('100%')
-        if (o.description && o.description.length > 0) {
-          Text(o.description)
-            .fontSize(12)
-            .fontColor(this.tk().textSecondary)
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Column({ space: 2 }) {
+          Text(o.label)
+            .fontSize(14)
+            .fontColor(this.tk().text)
             .width('100%')
+          if (o.description && o.description.length > 0) {
+            Text(o.description)
+              .fontSize(12)
+              .fontColor(this.tk().textSecondary)
+              .width('100%')
+          }
         }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        if (o.preview !== undefined && o.preview !== null && (o.preview as string).length > 0) {
+          Icon({
+            src: $r('app.media.ic_eye'),
+            iconSize: 14,
+            color: this.openPreview === this.previewKey(q, o) ? this.tk().accent : this.tk().textDim
+          })
+            .onClick(() => this.togglePreview(q, o))
+        }
+        Icon({ src: $r('app.media.ic_pencil'), iconSize: 14, color: this.tk().textDim })
+          .onClick(() => this.editToOther(q, o))
       }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-      Icon({ src: $r('app.media.ic_pencil'), iconSize: 14, color: this.tk().textDim })
-        .onClick(() => this.editToOther(q, o))
+      .width('100%')
+      if (this.openPreview === this.previewKey(q, o)) {
+        Column() {
+          MarkdownView({ content: o.preview as string, mdFontSize: 12, color: this.tk().textSecondary })
+        }
+        .width('100%')
+        .padding(8)
+        .borderRadius(6)
+        .backgroundColor(this.tk().bgCard)
+      }
     }
     .width('100%')
     .padding(10)
@@ -1395,6 +1747,20 @@ struct QuestionsCard {
             .fontSize(13).fontColor(this.tk().text).width(44).textAlign(TextAlign.End)
         }
         .width('100%')
+      } else if (field.kind === 'date' || field.kind === 'time' || field.kind === 'datetime') {
+        Row({ space: 6 }) {
+          Text((this.form.get(field.name) ?? '').length > 0
+            ? (this.form.get(field.name) as string)
+            : this.kindHint(field.kind))
+            .fontSize(13)
+            .fontColor((this.form.get(field.name) ?? '').length > 0 ? this.tk().text : this.tk().textDim)
+            .layoutWeight(1)
+          Icon({ src: $r('app.media.ic_chevron_down'), iconSize: 14, color: this.tk().textDim })
+        }
+        .width('100%')
+        .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+        .backgroundColor(this.tk().bgInput).borderRadius(8)
+        .onClick(() => this.openDateTime(field))
       } else {
         TextInput({ text: this.form.get(field.name) ?? '', placeholder: field.placeholder ?? this.kindHint(field.kind) })
           .type(field.kind === 'number' ? InputType.Number : InputType.Normal)
@@ -1406,6 +1772,41 @@ struct QuestionsCard {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .margin({ top: 6 })
+  }
+
+  private pad2(n: number): string {
+    return n < 10 ? `0${n}` : `${n}`;
+  }
+
+  /// Open the platform date/time picker for a date|time|datetime form field and
+  /// write back the HTML5-shaped string (YYYY-MM-DD / HH:MM / YYYY-MM-DDTHH:MM).
+  private openDateTime(field: FleetAskFormField): void {
+    if (field.kind === 'time') {
+      TimePickerDialog.show({
+        useMilitaryTime: true,
+        onAccept: (v: TimePickerResult) => {
+          this.setForm(field.name, `${this.pad2(v.hour ?? 0)}:${this.pad2(v.minute ?? 0)}`);
+        },
+      });
+      return;
+    }
+    DatePickerDialog.show({
+      start: new Date('1970-01-01'),
+      end: new Date('2100-12-31'),
+      onDateAccept: (d: Date) => {
+        const ds = `${d.getFullYear()}-${this.pad2(d.getMonth() + 1)}-${this.pad2(d.getDate())}`;
+        if (field.kind === 'date') {
+          this.setForm(field.name, ds);
+        } else {
+          TimePickerDialog.show({
+            useMilitaryTime: true,
+            onAccept: (v: TimePickerResult) => {
+              this.setForm(field.name, `${ds}T${this.pad2(v.hour ?? 0)}:${this.pad2(v.minute ?? 0)}`);
+            },
+          });
+        }
+      },
+    });
   }
 
   private kindHint(kind: string): string {
@@ -1448,6 +1849,9 @@ struct QuestionsCard {
         this.optionRow(q, o)
       })
       // Always-visible "Other" free-form composer.
+      if ((q.options?.length ?? 0) > 0) {
+        Text(t('其他')).fontSize(12).fontColor(this.tk().textSecondary).width('100%')
+      }
       TextArea({
         text: this.custom.get(q.question) ?? '',
         placeholder: (q.options?.length ?? 0) > 0 ? t('自定义回答') : t('自由回答…'),
@@ -1455,6 +1859,35 @@ struct QuestionsCard {
         .fontSize(13).fontColor(this.tk().text).placeholderColor(this.tk().textDim)
         .backgroundColor(this.tk().bgInput).borderRadius(8).width('100%')
         .onChange((v: string) => this.setCustom(q, v))
+      // Per-question attachments: pick + upload, appended as @path on submit.
+      Row({ space: 6 }) {
+        Icon({ src: $r('app.media.ic_paperclip'), iconSize: 14, color: this.tk().textSecondary })
+        Text(this.uploadingQ === q.question ? t('上传中…') : t('附件'))
+          .fontSize(12).fontColor(this.tk().textSecondary)
+      }
+      .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+      .borderRadius(8)
+      .backgroundColor(this.tk().bgInput)
+      .enabled(this.uploadingQ.length === 0)
+      .onClick(() => this.pickAttach(q))
+      if (this.attachmentsFor(q).length > 0) {
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(this.attachmentsFor(q), (a: Attachment) => {
+            Row({ space: 4 }) {
+              Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textDim })
+              Text(a.name).fontSize(12).fontColor(this.tk().textSecondary).constraintSize({ maxWidth: 160 })
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
+                .onClick(() => this.removeAttach(q, a.path))
+            }
+            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .margin({ right: 6, top: 6 })
+            .borderRadius(6)
+            .backgroundColor(this.tk().bgCard)
+          }, (a: Attachment) => a.path)
+        }
+        .width('100%')
+      }
       if ((q.options?.length ?? 0) > 0 && !q.multiSelect) {
         Text(this.multiOverride.get(q.question) === true ? t('已改为多选') : t('改为多选'))
           .fontSize(12)
@@ -1472,8 +1905,23 @@ struct QuestionsCard {
   build() {
     Column({ space: 10 }) {
       if (this.total() > 1) {
-        Text(t('第 {0} / {1} 题', this.qi() + 1, this.total()))
-          .fontSize(11).fontColor(this.tk().textDim).width('100%')
+        Row({ space: 8 }) {
+          Row({ space: 6 }) {
+            ForEach(this.stepIndices(), (i: number) => {
+              Circle({ width: 8, height: 8 })
+                .fill(i === this.qi()
+                  ? this.tk().accent
+                  : (this.answeredQuestion(this.request.questions[i]) ? this.tk().success : this.tk().textDim))
+                .onClick(() => {
+                  this.error = '';
+                  this.step = i;
+                })
+            }, (i: number) => `${i}`)
+          }
+          Text(t('第 {0} / {1} 题', this.qi() + 1, this.total()))
+            .fontSize(11).fontColor(this.tk().textDim)
+        }
+        .width('100%')
       }
       ForEach([this.request.questions[this.qi()]], (q: FleetAskQuestion) => {
         this.questionBody(q)

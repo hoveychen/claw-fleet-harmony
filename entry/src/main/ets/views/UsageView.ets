@@ -1,5 +1,6 @@
 import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { RelayClient } from '../common/Relay';
 import { AccountUsage, ClaudeAccount, SourceUsage, UsageBar, TodayUsage, UsageHistoryPoint } from '../models/Types';
 import { Icon } from '../common/Icon';
@@ -91,13 +92,19 @@ export struct UsageView {
   @State private loading: boolean = false;
   @State private history: UsageHistoryPoint[] | null = null;
   @State private historyNow: number = 0;
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.onBack());
     this.refresh();
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   private refresh(): void {
@@ -138,6 +145,60 @@ export struct UsageView {
       return this.tk().warning;
     }
     return this.tk().success;
+  }
+
+  /// Bar fill tint (mirrors UsageView.module.css .barFill): ok→accent,
+  /// warn→warning, critical→error. (Web uses accent, not success, for the OK band.)
+  private barFillTint(pct: number): string {
+    const tn = toneOf(pct);
+    if (tn === 'critical') {
+      return this.tk().error;
+    }
+    if (tn === 'warn') {
+      return this.tk().warning;
+    }
+    return this.tk().accent;
+  }
+
+  /// Percentage-label tint (.barPct): the OK band is neutral grey, not green.
+  private barPctTint(pct: number): string {
+    const tn = toneOf(pct);
+    if (tn === 'critical') {
+      return this.tk().error;
+    }
+    if (tn === 'warn') {
+      return this.tk().warning;
+    }
+    return this.tk().textSecondary;
+  }
+
+  /// Prev-period utilization as an integer percent, or -1 when absent.
+  private prevPct(b: UsageBar): number {
+    const p = b.prevUtilization;
+    if (p === null || p === undefined) {
+      return -1;
+    }
+    return Math.round(p * 100);
+  }
+
+  /// X-axis time ticks (every 6h, oldest→newest) across the 24h window.
+  private axisTicks(): number[] {
+    const to = this.historyNow;
+    const from = to - WINDOW_MS;
+    const step = 6 * 3600000;
+    const out: number[] = [];
+    for (let ts = to; ts >= from; ts -= step) {
+      out.push(ts);
+    }
+    return out.reverse();
+  }
+
+  private clockLabel(ts: number): string {
+    return new Date(ts).toLocaleTimeString(dateLocale(), {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   }
 
   /// Chart points [[x,y],…] for one series accessor over the history window.
@@ -222,25 +283,40 @@ export struct UsageView {
   bar(b: UsageBar) {
     Column({ space: 5 }) {
       Row() {
-        Text(b.label).fontSize(13).fontColor(this.tk().textSecondary).layoutWeight(1)
+        Text(b.label).fontSize(13).fontColor(this.tk().text).layoutWeight(1)
         Text(`${Math.round(b.utilization * 100)}%`)
           .fontSize(13)
           .fontWeight(FontWeight.Medium)
-          .fontColor(this.tintFor(toneOf(Math.round(b.utilization * 100))))
+          .fontColor(this.barPctTint(Math.round(b.utilization * 100)))
       }
       .width('100%')
-      // Track
+      // Track — fill by tone, plus a prev-period marker line (borderStrong).
       Stack({ alignContent: Alignment.Start }) {
-        Row().width('100%').height(6).borderRadius(3).backgroundColor(this.tk().bgInput)
+        Row().width('100%').height(6).borderRadius(3).backgroundColor(this.tk().bgSecondary)
         Row()
           .width(`${Math.min(Math.max(Math.round(b.utilization * 100), 0), 100)}%`)
           .height(6)
           .borderRadius(3)
-          .backgroundColor(this.tintFor(toneOf(Math.round(b.utilization * 100))))
+          .backgroundColor(this.barFillTint(Math.round(b.utilization * 100)))
+        if (this.prevPct(b) >= 0) {
+          Row()
+            .width(2)
+            .height(8)
+            .borderRadius(1)
+            .backgroundColor(this.tk().borderStrong)
+            .position({ x: `${Math.min(Math.max(this.prevPct(b), 0), 100)}%`, y: -1 })
+        }
       }
       .width('100%')
-      if (formatResetIn(b.resetsAt).length > 0) {
-        Text(formatResetIn(b.resetsAt)).fontSize(11).fontColor(this.tk().textDim).width('100%')
+      if (formatResetIn(b.resetsAt).length > 0 || this.prevPct(b) >= 0) {
+        Row() {
+          Text(formatResetIn(b.resetsAt)).fontSize(11).fontColor(this.tk().textDim).layoutWeight(1)
+          if (this.prevPct(b) >= 0) {
+            Text(t('上一周期 {0}%', this.prevPct(b))).fontSize(11).fontColor(this.tk().textDim)
+          }
+        }
+        .width('100%')
+        .justifyContent(FlexAlign.SpaceBetween)
       }
     }
     .width('100%')
@@ -256,7 +332,7 @@ export struct UsageView {
             .fontSize(24)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
-          Text(t('{0} 输出 token', fmtTokens(this.todayUsage.outputTokens)))
+          Text(t('{0} token', fmtTokens(this.todayUsage.inputTokens + this.todayUsage.outputTokens)))
             .fontSize(13)
             .fontColor(this.tk().textSecondary)
         }
@@ -343,6 +419,14 @@ export struct UsageView {
         }
         .width(CHART_W)
         .height(CHART_H)
+        // X-axis time ticks (every 6h across the window), evenly spaced.
+        Row() {
+          ForEach(this.axisTicks(), (ts: number) => {
+            Text(this.clockLabel(ts)).fontSize(10).fontColor(this.tk().textDim)
+          }, (ts: number) => `${ts}`)
+        }
+        .width(CHART_W)
+        .justifyContent(FlexAlign.SpaceBetween)
         Row({ space: 14 }) {
           Row({ space: 4 }) {
             Circle({ width: 8, height: 8 }).fill(FIVE_HOUR_COLOR)
@@ -400,6 +484,12 @@ export struct UsageView {
             Text(t('用量加载失败：{0}', this.error))
               .fontSize(13)
               .fontColor(this.tk().error)
+              .width('100%')
+              .margin({ top: 10 })
+          } else if (this.data === null && this.loading) {
+            Text(t('加载中…'))
+              .fontSize(13)
+              .fontColor(this.tk().textDim)
               .width('100%')
               .margin({ top: 10 })
           }

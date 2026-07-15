@@ -1,5 +1,7 @@
 import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
 import { ColorTokens, themeTokens } from '../common/Theme';
+import { setRootBackHandler } from '../common/BackStack';
 import { t } from '../common/I18n';
 import { RelayClient, DeviceInfo, RelayHandlers } from '../common/Relay';
 import { RelayStore } from '../common/RelayStore';
@@ -45,6 +47,7 @@ export struct MainShell {
   @State tab: string = 'decisions';
   onRepair: () => void = () => {};
   onNewSession: () => void = () => {};
+  onAuthError: (message: string) => void = () => {};
 
   // Relay link + snapshot state, pushed down to the tab bodies.
   @State private connected: boolean = false;
@@ -78,6 +81,9 @@ export struct MainShell {
   private clientId: string = '';
   // Generation counter cancelling the today_usage poll loop across reconnects.
   private usageGen: number = 0;
+  // Root back-guard state: back on the 决策 tab arms "再按一次返回退出" for 2s.
+  private exitArmed: boolean = false;
+  private exitTimer: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
@@ -88,6 +94,9 @@ export struct MainShell {
   }
 
   aboutToAppear(): void {
+    // Own the root back behaviour while the shell is up (the pairing gate keeps
+    // the default "exit" handler). No overlay open + back = tab/exit logic below.
+    setRootBackHandler((): boolean => this.handleRootBack());
     loadClientId(this.ctx())
       .then((id: string) => {
         this.clientId = id;
@@ -101,10 +110,39 @@ export struct MainShell {
   }
 
   aboutToDisappear(): void {
+    setRootBackHandler((): boolean => false);
+    if (this.exitTimer !== -1) {
+      clearTimeout(this.exitTimer);
+      this.exitTimer = -1;
+    }
     if (this.client) {
       this.client.close();
       this.client = null;
     }
+  }
+
+  /// Back at the root (no overlay layer): off the 决策 tab → return to it;
+  /// on it → arm "再按一次返回退出" for 2s, exiting only on a second press within
+  /// the window (mirrors mobile-web's ExitGuard). Returns true to hold, false to
+  /// let the platform exit.
+  private handleRootBack(): boolean {
+    if (this.tab !== 'decisions') {
+      this.tab = 'decisions';
+      return true;
+    }
+    if (this.exitArmed) {
+      return false;
+    }
+    this.exitArmed = true;
+    promptAction.showToast({ message: t('再按一次返回退出'), duration: 2000 });
+    if (this.exitTimer !== -1) {
+      clearTimeout(this.exitTimer);
+    }
+    this.exitTimer = setTimeout(() => {
+      this.exitArmed = false;
+      this.exitTimer = -1;
+    }, 2000);
+    return true;
   }
 
   private deviceInfo(): DeviceInfo {
@@ -150,6 +188,11 @@ export struct MainShell {
       },
       onDecisionResolved: (_kind: string, id: string) => {
         this.removeDecision(id);
+      },
+      onAuthError: (message: string) => {
+        // Secret reset on the desktop — bubble up so Index shows the clear-secret
+        // page instead of leaving the shell spinning on a dead connection.
+        this.onAuthError(message);
       },
     };
     this.client = new RelayClient(pairing.relayUrl, pairing.secret, handlers, () => this.deviceInfo());
@@ -279,10 +322,10 @@ export struct MainShell {
       if (this.todayUsage !== null) {
         Row({ space: 4 }) {
           Text(`$${this.todayUsage.costUsd.toFixed(2)}`)
-            .fontSize(12)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
-          Text(this.fmtTokens(this.todayUsage.outputTokens))
+          Text(this.fmtTokens(this.todayUsage.inputTokens + this.todayUsage.outputTokens))
             .fontSize(11)
             .fontColor(this.tk().textDim)
         }
@@ -331,18 +374,25 @@ export struct MainShell {
 
   @Builder
   fab() {
-    Column() {
+    // iPhone 风格凸起圆形动作按钮：圆钮浮在导航栏之上，下方带「新会话」标签。
+    Stack({ alignContent: Alignment.Bottom }) {
+      Text(t('新会话'))
+        .fontSize(10.5)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.tk().accent)
+        .margin({ bottom: 6 })
       Stack() {
-        Text('+').fontSize(28).fontWeight(FontWeight.Bold).fontColor('#ffffff')
+        Icon({ src: $r('app.media.ic_plus'), iconSize: 24, color: '#ffffff' })
       }
       .width(46)
       .height(46)
       .borderRadius(23)
       .backgroundColor(this.tk().accent)
+      .shadow({ radius: 10, color: 'rgba(0,0,0,0.28)', offsetX: 0, offsetY: 3 })
+      .offset({ y: -18 })
     }
     .layoutWeight(1)
     .height('100%')
-    .justifyContent(FlexAlign.Center)
     .onClick(() => {
       this.showNewSession = true;
     })
@@ -352,7 +402,7 @@ export struct MainShell {
   bottomBar() {
     Row() {
       this.tabItem('decisions', $r('app.media.ic_inbox'), t('决策'), this.decisions.length)
-      this.tabItem('tasks', $r('app.media.ic_list_todo'), t('任务'), 0)
+      this.tabItem('tasks', $r('app.media.ic_list_checks'), t('任务'), 0)
       this.fab()
       this.tabItem('wiki', $r('app.media.ic_book_open'), t('知识库'), 0)
       this.tabItem('more', $r('app.media.ic_ellipsis'), t('更多'), 0)

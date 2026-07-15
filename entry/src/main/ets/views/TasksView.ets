@@ -22,7 +22,7 @@ import { loadDraftRaw, saveDraftRaw } from '../common/Draft';
 
 const WORKING: SessionStatus[] = ['thinking', 'executing', 'streaming', 'processing', 'delegating'];
 const LIVE: SessionStatus[] =
-  ['thinking', 'executing', 'streaming', 'processing', 'delegating', 'waitingInput', 'active', 'rateLimited'];
+  ['thinking', 'executing', 'streaming', 'processing', 'delegating', 'waitingInput', 'active', 'rateLimited', 'serverErrored'];
 
 /// Pseudo-workspaces pinned above the real directories, mirroring the desktop
 /// launchpad. "" is "all"; every real value is an absolute path, so these bare
@@ -44,7 +44,7 @@ function statusTone(status: SessionStatus): string {
   if (status === 'active') {
     return 'active';
   }
-  if (status === 'rateLimited') {
+  if (status === 'rateLimited' || status === 'serverErrored') {
     return 'error';
   }
   return '';
@@ -704,9 +704,9 @@ export struct TasksView {
 
       // Mark segment
       Row() {
-        this.segButton('all', t('全部'), this.countAll())
-        this.segButton('pending', t('进行中'), this.countPending())
-        this.segButton('done', t('已完成'), this.countDone())
+        this.segButton('all', t('全部'), this.countAll(), null)
+        this.segButton('pending', t('进行中'), this.countPending(), $r('app.media.ic_circle'))
+        this.segButton('done', t('已完成'), this.countDone(), $r('app.media.ic_circle_check_big'))
       }
       .width('100%')
       .borderRadius(8)
@@ -718,8 +718,11 @@ export struct TasksView {
   }
 
   @Builder
-  segButton(key: string, label: string, count: number) {
+  segButton(key: string, label: string, count: number, iconRes: Resource | null) {
     Row({ space: 4 }) {
+      if (iconRes !== null) {
+        Icon({ src: iconRes, iconSize: 13, color: this.markFilter === key ? this.tk().text : this.tk().textSecondary })
+      }
       Text(label)
         .fontSize(12)
         .fontColor(this.markFilter === key ? this.tk().text : this.tk().textSecondary)
@@ -775,14 +778,14 @@ export struct TasksView {
 
         if (s.handoff) {
           Row({ space: 3 }) {
-            Icon({ src: $r('app.media.ic_workflow'), iconSize: 12, color: this.tk().textDim })
+            Icon({ src: $r('app.media.ic_share_2'), iconSize: 12, color: this.tk().textDim })
             Text(`${s.handoff.hop}/${s.handoff.chainLen}`).fontSize(12).fontColor(this.tk().textDim)
           }
           .margin({ right: 10 })
         }
         if (LIVE.includes(s.status)) {
           Row({ space: 3 }) {
-            Text('⏱').fontSize(11)
+            Icon({ src: $r('app.media.ic_clock'), iconSize: 11, color: this.runtimeColor(s) })
             Text(formatRunning(s.createdAtMs)).fontSize(12).fontColor(this.runtimeColor(s))
           }
         }
@@ -811,22 +814,25 @@ export struct TasksView {
 
       // Ops
       Row() {
-        Text(this.effectiveMark(s) === 'done' ? '✓' : '○')
-          .fontSize(15)
-          .fontColor(this.effectiveMark(s) === 'done' ? this.tk().success : this.tk().textDim)
-          .width(30)
-          .height(26)
-          .textAlign(TextAlign.Center)
-          .borderRadius(6)
-          .backgroundColor(this.effectiveMark(s) === 'done' ? this.tk().accentSoft : Color.Transparent)
-          .onClick(() => this.setMark(s, this.effectiveMark(s) !== 'done'))
+        Stack() {
+          Icon({
+            src: this.effectiveMark(s) === 'done' ? $r('app.media.ic_circle_check_big') : $r('app.media.ic_circle'),
+            iconSize: 15,
+            color: this.effectiveMark(s) === 'done' ? this.tk().success : this.tk().textDim
+          })
+        }
+        .width(30)
+        .height(26)
+        .borderRadius(6)
+        .backgroundColor(this.effectiveMark(s) === 'done' ? this.tk().accentSoft : Color.Transparent)
+        .onClick(() => this.setMark(s, this.effectiveMark(s) !== 'done'))
         Blank()
         if (!s.isSubagent && stopMode(s) !== 'spent') {
           Row({ space: 3 }) {
             if (this.busyOp === s.id) {
               Text('…').fontSize(12).fontColor(this.stopColor(s))
             } else {
-              Text('■').fontSize(10).fontColor(this.stopColor(s))
+              Icon({ src: $r('app.media.ic_square'), iconSize: 12, color: this.stopColor(s) })
               Text(stopMode(s) === 'interrupt' ? t('中断') : t('停止'))
                 .fontSize(12)
                 .fontColor(this.stopColor(s))

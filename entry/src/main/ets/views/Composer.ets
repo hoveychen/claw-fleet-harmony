@@ -7,6 +7,7 @@ import { RelayClient, RelayRequestError } from '../common/Relay';
 import { SessionInfo } from '../models/Types';
 import { canResumeSession, canEnqueueSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { Icon } from '../common/Icon';
 import { loadDraftRaw, saveDraftRaw, clearDraft } from '../common/Draft';
 import { Attachment, pickAndUploadAttachments, withContextFiles } from '../common/FileTransfer';
@@ -264,7 +265,27 @@ struct AttachmentBar {
   }
 
   build() {
-    Column({ space: 6 }) {
+    // Chips and the "附件" add button share one wrapping row (button after the
+    // chips), mirroring mobile-web's AttachmentRow layout.
+    Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
+      ForEach(this.attachments, (a: Attachment) => {
+        Row({ space: 4 }) {
+          Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textSecondary })
+          Text(a.name)
+            .fontSize(12)
+            .fontColor(this.tk().text)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .constraintSize({ maxWidth: 140 })
+          Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
+            .onClick(() => this.onRemove(a.path))
+        }
+        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+        .borderRadius(6)
+        .backgroundColor(this.tk().bgInput)
+        .border({ width: 1, color: this.tk().border })
+      }, (a: Attachment) => a.path)
+
       Button() {
         Row({ space: 4 }) {
           Icon({ src: $r('app.media.ic_paperclip'), iconSize: 14, color: this.tk().text })
@@ -276,32 +297,8 @@ struct AttachmentBar {
       .padding({ left: 12, right: 12, top: 6, bottom: 6 })
       .enabled(this.pickEnabled && !this.uploading)
       .onClick(() => this.onPick())
-
-      if (this.attachments.length > 0) {
-        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
-          ForEach(this.attachments, (a: Attachment) => {
-            Row({ space: 4 }) {
-              Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textSecondary })
-              Text(a.name)
-                .fontSize(12)
-                .fontColor(this.tk().text)
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .constraintSize({ maxWidth: 140 })
-              Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
-                .onClick(() => this.onRemove(a.path))
-            }
-            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-            .borderRadius(6)
-            .backgroundColor(this.tk().bgInput)
-            .border({ width: 1, color: this.tk().border })
-          }, (a: Attachment) => a.path)
-        }
-        .width('100%')
-      }
     }
     .width('100%')
-    .alignItems(HorizontalAlign.Start)
   }
 }
 
@@ -328,9 +325,19 @@ export struct NewSessionSheet {
   @State private chatPath: string | null = null;
   @State private attachments: Attachment[] = [];
   @State private uploading: boolean = false;
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  /// Back inside the sheet: close the DirPicker sub-layer first, else the sheet.
+  private handleBack(): void {
+    if (this.picking) {
+      this.picking = false;
+    } else {
+      this.onClose();
+    }
   }
 
   private ctx(): common.UIAbilityContext {
@@ -381,6 +388,7 @@ export struct NewSessionSheet {
   }
 
   aboutToAppear(): void {
+    this.backLayerId = pushBackLayer(() => this.handleBack());
     // Restore the in-progress draft before anything else, so the form paints
     // with the user's last input. `effectiveKey()` reconciles a stale workspace
     // against the live recents list, so a vanished workspace just falls back.
@@ -402,6 +410,10 @@ export struct NewSessionSheet {
           this.chatPath = null;
         });
     }
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   /// Recent workspaces from the sessions snapshot, excluding the pure-chat one
@@ -571,9 +583,12 @@ export struct NewSessionSheet {
                 this.customWorkspace = v;
                 this.saveDraftNow();
               })
-            Button(t('浏览…'))
-              .fontSize(13)
-              .fontColor(this.tk().text)
+            Button() {
+              Row({ space: 4 }) {
+                Icon({ src: $r('app.media.ic_folder_search'), iconSize: 14, color: this.tk().text })
+                Text(t('浏览…')).fontSize(13).fontColor(this.tk().text)
+              }
+            }
               .backgroundColor(this.tk().bgInput)
               .enabled(this.client !== null)
               .onClick(() => {
@@ -624,10 +639,13 @@ export struct NewSessionSheet {
           },
         })
 
-        Button(this.busy ? t('创建中…') : t('创建会话'))
+        Button() {
+          Row({ space: 6 }) {
+            Icon({ src: $r('app.media.ic_send'), iconSize: 16, color: '#ffffff' })
+            Text(this.busy ? t('创建中…') : t('创建会话')).fontSize(15).fontColor('#ffffff')
+          }
+        }
           .width('100%')
-          .fontSize(15)
-          .fontColor('#ffffff')
           .backgroundColor(this.tk().accent)
           .enabled(this.canSubmit())
           .onClick(() => this.submit())
@@ -884,9 +902,16 @@ export struct ResumeComposer {
           } else {
             Blank().layoutWeight(1)
           }
-          Button(this.buttonLabel())
-            .fontSize(14)
-            .fontColor('#ffffff')
+          Button() {
+            Row({ space: 6 }) {
+              Icon({
+                src: this.sent ? $r('app.media.ic_check') : $r('app.media.ic_send'),
+                iconSize: 15,
+                color: '#ffffff'
+              })
+              Text(this.buttonLabel()).fontSize(14).fontColor('#ffffff')
+            }
+          }
             .backgroundColor(this.tk().accent)
             .enabled(this.submitEnabled())
             .onClick(() => this.submit())

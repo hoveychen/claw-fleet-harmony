@@ -3,6 +3,7 @@ import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { t, dateLocale } from '../common/I18n';
 import { exportWikiDoc } from '../common/FileTransfer';
+import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
@@ -78,6 +79,7 @@ export struct WikiDocView {
   @State private markdown: string | null = null;
   @State private error: string = '';
   @State private exporting: boolean = false;
+  private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
@@ -116,8 +118,15 @@ export struct WikiDocView {
   }
 
   aboutToAppear(): void {
+    // One layer for the whole reader; its back pops the internal `[[slug]]` doc
+    // chain one hop at a time (goBack), closing the overlay only at the entry doc.
+    this.backLayerId = pushBackLayer(() => this.goBack());
     this.stack = [this.doc];
     this.showDoc(this.doc);
+  }
+
+  aboutToDisappear(): void {
+    dropBackLayer(this.backLayerId);
   }
 
   /// Reset version + (re)load content for whatever doc just became current.
@@ -224,8 +233,11 @@ export struct WikiDocView {
             }
           })
       }
+      // 导出 / 分享: web uses navigator.share (⤴). The 元服务 SDK has no outbound
+      // share sheet, so this saves via DocumentViewPicker — but the share glyph
+      // aligns the affordance with the web's "导出 / 分享".
       Icon({
-        src: $r('app.media.ic_download'),
+        src: $r('app.media.ic_share'),
         iconSize: 18,
         color: this.exporting ? this.tk().textDim : this.tk().accent,
       })
