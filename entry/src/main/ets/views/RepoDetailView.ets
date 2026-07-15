@@ -67,6 +67,14 @@ export struct RepoDetailView {
     const params: RootParams = { root: this.repo.root };
     client.request<RepoDetail>('repo_detail', params)
       .then((d: RepoDetail) => {
+        // ArkTS's typed JSON.parse can leave nested array fields undefined when
+        // they arrive through the generic `data: Object` reply path — the same
+        // reason MainShell guards pending_snapshot's arrays with `?? []`. Backfill
+        // here so build()'s `.length` / ForEach never dereference undefined and
+        // abort the app (device stack: RepoDetailView.ets worktrees.length →
+        // TypeError: Cannot read property length of undefined).
+        d.worktrees = d.worktrees ?? [];
+        d.commits = d.commits ?? [];
         this.detail = d;
       })
       .catch((e: Object) => {
