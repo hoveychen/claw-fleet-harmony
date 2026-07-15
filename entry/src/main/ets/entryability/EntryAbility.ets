@@ -17,6 +17,13 @@ function isDark(mode?: ConfigurationConstant.ColorMode): boolean {
 }
 
 export default class EntryAbility extends UIAbility {
+  /// Background freeze suspends JS timers, so a reconnect scheduled while
+  /// backgrounded may never fire. Bump a nonce on every foreground; MainShell
+  /// @Watch-es it and kicks the relay client if it isn't authed.
+  onForeground(): void {
+    AppStorage.setOrCreate('fgNonce', Date.now());
+  }
+
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     const cfg = this.context.config;
     const deviceIsZh = (cfg.language ?? 'zh').toLowerCase().startsWith('zh');

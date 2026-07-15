@@ -1,4 +1,4 @@
-import { webSocket } from '@kit.NetworkKit';
+import { connection, webSocket } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
@@ -23,6 +23,12 @@ const TAG = 'fleet';
 const REQUEST_TIMEOUT_MS = 15000;
 const HELLO_INTERVAL_MS = 15000;
 const MAX_RECONNECT_MS = 15000;
+// A connect attempt that neither auths nor errors within this window is
+// declared wedged and torn down. Device-observed failure mode (2026-07-15,
+// LMR-AL00): with the network gone, ws.connect() never invokes its callback
+// and no 'close'/'error' event ever fires — without this watchdog the client
+// sits in "连接中" forever even after the network returns.
+const CONNECT_ATTEMPT_TIMEOUT_MS = 10000;
 
 /// ArkTS bans untyped object literals (`{}`) and object literals for `Record`
 /// types, so we use an empty class instance wherever a "no data" / "no params"
@@ -135,6 +141,15 @@ export class RelayClient {
   private pending: Map<string, PendingEntry> = new Map<string, PendingEntry>();
   private reconnectDelay = 1000;
   private closed = false;
+  // Idempotence guard: 'close' events, 'error' events, connect-callback errors
+  // and the attempt watchdog can all fire for one dead socket; only the first
+  // schedules the retry.
+  private reconnectPending = false;
+  private reconnectTimer = -1;
+  // Monotonic connect-attempt id so a stale watchdog from attempt N can never
+  // kill attempt N+1.
+  private attemptSeq = 0;
+  private netConn: connection.NetConnection | null = null;
   private authed = false;
   private channelToken?: string;
   private encKey?: Uint8Array;
@@ -167,11 +182,97 @@ export class RelayClient {
 
   connect(): void {
     this.closed = false;
+    this.startNetWatch();
     this.open();
+  }
+
+  /// Mirror of the browser's platform behaviour the web client gets for free:
+  /// the OS tells us the network came/went, we tear down and redial instead of
+  /// trusting a zombie socket.
+  private startNetWatch(): void {
+    if (this.netConn) {
+      return;
+    }
+    try {
+      const conn = connection.createNetConnection();
+      conn.register((err: BusinessError) => {
+        if (err) {
+          hilog.warn(DOMAIN, TAG, 'netwatch register failed: %{public}s', JSON.stringify(err));
+        }
+      });
+      conn.on('netAvailable', () => {
+        hilog.info(DOMAIN, TAG, 'netwatch: netAvailable (authed=%{public}d)', this.authed ? 1 : 0);
+        if (!this.authed) {
+          this.kickNow('network available');
+        }
+      });
+      conn.on('netLost', () => {
+        hilog.warn(DOMAIN, TAG, 'netwatch: netLost');
+        this.forceReconnect('network lost');
+      });
+      conn.on('netUnavailable', () => {
+        hilog.warn(DOMAIN, TAG, 'netwatch: netUnavailable');
+        this.forceReconnect('network unavailable');
+      });
+      this.netConn = conn;
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'netwatch unavailable: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  private stopNetWatch(): void {
+    const conn = this.netConn;
+    this.netConn = null;
+    if (conn) {
+      try {
+        conn.unregister((_e: BusinessError) => {});
+      } catch (_e) {
+        // best-effort
+      }
+    }
+  }
+
+  /// Drop whatever socket/backoff state exists and redial after ~1s. Public so
+  /// the ability's onForeground hook can nudge a client whose timers were
+  /// frozen while backgrounded.
+  kickNow(reason: string): void {
+    if (this.closed || this.authed) {
+      return;
+    }
+    if (this.reconnectPending) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectPending = false;
+    }
+    this.reconnectDelay = 1000;
+    this.forceReconnect(reason);
+  }
+
+  /// Tear down the current socket (if any) and schedule a reconnect. Safe to
+  /// call from every failure path; onSocketClosed dedupes.
+  private forceReconnect(reason: string): void {
+    if (this.closed) {
+      return;
+    }
+    hilog.warn(DOMAIN, TAG, 'relay reconnect (%{public}s)', reason);
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      try {
+        ws.close((_e: BusinessError, _ok: boolean) => {});
+      } catch (_e) {
+        // already dead
+      }
+    }
+    this.onSocketClosed();
   }
 
   close(): void {
     this.closed = true;
+    this.stopNetWatch();
+    if (this.reconnectPending) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectPending = false;
+    }
     this.sayGoodbye();
     this.stopHello();
     if (this.ws) {
@@ -221,6 +322,15 @@ export class RelayClient {
       const ws = webSocket.createWebSocket();
       this.ws = ws;
       this.authed = false;
+      this.attemptSeq += 1;
+      const seq = this.attemptSeq;
+      // Watchdog: if this attempt neither auths nor dies within the window,
+      // tear it down and retry (see CONNECT_ATTEMPT_TIMEOUT_MS above).
+      setTimeout(() => {
+        if (!this.closed && seq === this.attemptSeq && !this.authed) {
+          this.forceReconnect('connect attempt timed out');
+        }
+      }, CONNECT_ATTEMPT_TIMEOUT_MS);
 
       ws.on('open', (_err: BusinessError, _value: Object) => {
         const token = this.channelToken ?? '';
@@ -245,21 +355,26 @@ export class RelayClient {
         this.onSocketClosed();
       });
 
-      ws.on('error', (_err: BusinessError) => {
-        if (this.ws) {
-          this.ws.close((_e: BusinessError, _ok: boolean) => {});
-        }
+      ws.on('error', (err: BusinessError) => {
+        // OHOS may deliver only 'error' (no 'close') for a failed socket, so
+        // closing and waiting for the close event is not enough — reconnect.
+        hilog.warn(DOMAIN, TAG, 'ws error: %{public}s', JSON.stringify(err));
+        this.forceReconnect('socket error');
       });
 
       ws.connect(toWsUrl(this.relayUrl), (err: BusinessError, _ok: boolean) => {
         if (err) {
           hilog.warn(DOMAIN, TAG, 'ws connect failed: %{public}s', JSON.stringify(err));
+          this.forceReconnect('connect failed');
         }
       });
     });
   }
 
   private onSocketClosed(): void {
+    if (this.reconnectPending) {
+      return; // a retry is already scheduled for this dead socket
+    }
     const wasAuthed = this.authed;
     this.authed = false;
     this.stopHello();
@@ -271,7 +386,11 @@ export class RelayClient {
     }
     const delay = wasAuthed ? 1000 : this.reconnectDelay;
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_MS);
-    setTimeout(() => this.open(), delay);
+    this.reconnectPending = true;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectPending = false;
+      this.open();
+    }, delay);
   }
 
   private handleFrame(frame: InboundFrame): void {
@@ -388,7 +507,11 @@ export class RelayClient {
     }
     const sealed = await sealString(ek, payloadJson);
     const frame: MsgFrame = { type: 'msg', payload: sealed };
-    ws.send(JSON.stringify(frame), (_e: BusinessError, _ok: boolean) => {});
+    ws.send(JSON.stringify(frame), (e: BusinessError, _ok: boolean) => {
+      if (e && this.ws === ws) {
+        this.forceReconnect('send failed');
+      }
+    });
   }
 
   /// Fire-and-forget seal+send for a `{event, clientId}` payload (bye).
