@@ -1,4 +1,4 @@
-import { t } from '../common/I18n';
+import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { WikiDoc, WikiSearchHit } from '../models/Types';
@@ -44,6 +44,33 @@ function kindBadge(kind: string): string {
     return 'HTML';
   }
   return 'DIR';
+}
+
+/// Badge background per kind (mirrors WikiView.module.css: markdown=accent,
+/// html=success, htmlDir=warning; unknown falls back to text-dim). White text.
+function kindBadgeColor(kind: string, tk: ColorTokens): string {
+  if (kind === 'markdown') {
+    return tk.accent;
+  }
+  if (kind === 'html') {
+    return tk.success;
+  }
+  if (kind === 'htmlDir') {
+    return tk.warning;
+  }
+  return tk.textDim;
+}
+
+/// yy/mm/dd in the UI locale (native mirror of WikiView's fmtDate).
+function fmtDate(ms: number): string {
+  if (!ms) {
+    return '';
+  }
+  return new Date(ms).toLocaleDateString(dateLocale(), {
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+  });
 }
 
 @Component
@@ -238,10 +265,11 @@ export struct WikiView {
     Row({ space: 10 }) {
       Text(kindBadge(doc.kind))
         .fontSize(10)
-        .fontColor(this.tk().accent)
-        .backgroundColor(this.tk().accentSoft)
-        .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-        .borderRadius(4)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#ffffff')
+        .backgroundColor(kindBadgeColor(doc.kind, this.tk()))
+        .padding({ left: 6, right: 6, top: 3, bottom: 3 })
+        .borderRadius(6)
       Column({ space: 3 }) {
         Text(doc.title.length > 0 ? doc.title : leafOf(doc.slug))
           .fontSize(14)
@@ -257,7 +285,12 @@ export struct WikiView {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
         } else {
-          Text(doc.workspaceName).fontSize(12).fontColor(this.tk().textDim)
+          Text(fmtDate(doc.updatedMs).length > 0 ? `${doc.workspaceName} · ${fmtDate(doc.updatedMs)}` : doc.workspaceName)
+            .fontSize(11)
+            .fontColor(this.tk().textDim)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
         }
       }
       .alignItems(HorizontalAlign.Start)
@@ -354,7 +387,7 @@ export struct WikiView {
               }, (doc: WikiDoc) => doc.slug)
             }
           } else if (this.groups().length === 0) {
-            EmptyState({ compact: true, iconRes: $r('app.media.ic_file_text'), title: t('该项目下没有文档。') })
+            EmptyState({ compact: true, iconRes: $r('app.media.ic_file_question_mark'), title: t('该项目下没有文档。') })
           } else {
             ForEach(this.groups(), (g: DocGroup) => {
               Text(g.folder.length > 0 ? g.folder : t('未归类'))

@@ -224,8 +224,11 @@ export struct WikiDocView {
             }
           })
       }
+      // 导出 / 分享: web uses navigator.share (⤴). The 元服务 SDK has no outbound
+      // share sheet, so this saves via DocumentViewPicker — but the share glyph
+      // aligns the affordance with the web's "导出 / 分享".
       Icon({
-        src: $r('app.media.ic_download'),
+        src: $r('app.media.ic_share'),
         iconSize: 18,
         color: this.exporting ? this.tk().textDim : this.tk().accent,
       })
