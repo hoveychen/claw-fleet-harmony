@@ -5,19 +5,30 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 const DOMAIN = 0x0000;
 const TAG = 'fleet';
 
-/// App-wide safe-area insets (in vp), published to AppStorage as `safeTop` /
-/// `safeBottom` so any @StorageProp-bound header re-lays-out when they change.
+/// Right-side inset (vp) reserved on every top-of-screen header so its right-hand
+/// controls clear the system menu capsule (close / more) that the atomic service
+/// framework floats over the top-right corner.
 ///
-/// The atomic service runs full-screen immersive — the window covers the whole
-/// display (verified on device: window rect == [0,0,1276,2848]). That means the
-/// app itself must reserve the top status-bar band and the bottom gesture bar;
-/// nothing insets them for us. The system menu capsule (close / more, fixed at
-/// the top-right) floats within the status-bar band, so reserving the status-bar
-/// top inset also clears the capsule.
+/// The capsule is NOT reported by any public avoid-area API, so this is a measured
+/// constant. On-device (LMR-AL00, density 3.25, dumpLayout 2026-07-15): the content
+/// root is framework-inset to y=133px (below the status bar), and the capsule floats
+/// at screen x≈961–1210 — i.e. ~97vp in from the right edge. Reserving ~100vp of
+/// right padding puts the header's right controls just left of the capsule. The
+/// header title (left / centered) never reaches the capsule, so it is untouched.
+export const CAPSULE_INSET_RIGHT: number = 104;
+
+/// App-wide bottom safe-area inset (vp), published to AppStorage as `safeBottom`.
 ///
-/// Read once from window.getWindowAvoidArea(TYPE_SYSTEM) and refreshed on
-/// avoidAreaChange (rotation / fold). Both values default to 0, so if the read
-/// ever fails the headers simply render at the very top, exactly as before.
+/// dumpLayout shows the atomic service content root is framework-inset on TOP only
+/// ([0,133]…) — the framework does NOT reserve the bottom gesture bar (content runs
+/// to the screen bottom y=2848). So bottom bars / input docks must reserve it
+/// themselves; `safeBottom` carries getWindowAvoidArea(TYPE_SYSTEM).bottomRect. The
+/// top status bar needs no app inset (the framework already handles it), so we do
+/// NOT apply a top inset — that was double-reserving and pushed every header down a
+/// full row (fixed 2026-07-15).
+///
+/// `safeTop` is still published for diagnostics / fallback but is intentionally not
+/// applied to any header.
 
 let bound = false;
 
@@ -27,11 +38,17 @@ function publish(win: window.Window): void {
   const bottomVp = px2vp(sys.bottomRect.height);
   AppStorage.setOrCreate('safeTop', topVp);
   AppStorage.setOrCreate('safeBottom', bottomVp);
-  // One-shot calibration log: raw px + converted vp for the top status-bar band
-  // (which contains the capsule) and the bottom gesture bar. grep 'safe-area'.
+  // Full-rect calibration log: every rect of TYPE_SYSTEM (x/y/w/h in px) so the
+  // capsule geometry can be re-derived from the API later if a rect ever exposes
+  // it. grep 'safe-area'.
+  const t = sys.topRect;
+  const b = sys.bottomRect;
+  const l = sys.leftRect;
+  const r = sys.rightRect;
   hilog.info(DOMAIN, TAG,
-    'safe-area: topRect px=%{public}d vp=%{public}f | bottomRect px=%{public}d vp=%{public}f',
-    sys.topRect.height, topVp, sys.bottomRect.height, bottomVp);
+    'safe-area TYPE_SYSTEM top[%{public}d,%{public}d,%{public}d,%{public}d] bottom[%{public}d,%{public}d,%{public}d,%{public}d] left[%{public}d,%{public}d,%{public}d,%{public}d] right[%{public}d,%{public}d,%{public}d,%{public}d]',
+    t.left, t.top, t.width, t.height, b.left, b.top, b.width, b.height,
+    l.left, l.top, l.width, l.height, r.left, r.top, r.width, r.height);
 }
 
 /// Resolve the current window's system avoid area, publish it, and (once) keep it

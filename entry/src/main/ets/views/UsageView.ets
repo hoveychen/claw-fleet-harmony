@@ -3,6 +3,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { AccountUsage, ClaudeAccount, SourceUsage, UsageBar, TodayUsage, UsageHistoryPoint } from '../models/Types';
 import { Icon } from '../common/Icon';
+import { CAPSULE_INSET_RIGHT } from '../common/SafeArea';
 
 /// 「账号与用量」子页面 — the native port of mobile-web/src/views/UsageView.tsx.
 /// Today's cumulative cost (reused from the shell's today_usage poll), the Claude
@@ -187,8 +188,8 @@ export struct UsageView {
         .onClick(() => this.refresh())
     }
     .width('100%')
-    .height(48 + this.safeTop)
-    .padding({ left: 12, right: 12, top: this.safeTop })
+    .height(48)
+    .padding({ left: 12, right: CAPSULE_INSET_RIGHT })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }

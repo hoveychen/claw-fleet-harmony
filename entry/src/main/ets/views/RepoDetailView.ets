@@ -3,6 +3,7 @@ import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { RepoSummary, RepoDetail, WorktreeHealth, CommitInfo, GitOpResult } from '../models/Types';
 import { Icon } from '../common/Icon';
+import { CAPSULE_INSET_RIGHT } from '../common/SafeArea';
 
 /// 单个仓库详情 — the native port of mobile-web/src/views/RepoDetailView.tsx. The
 /// main branch's push status, each worktree's loose-ends detail, recent commits,
@@ -129,8 +130,8 @@ export struct RepoDetailView {
       Text('').width(40)
     }
     .width('100%')
-    .height(52 + this.safeTop)
-    .padding({ left: 12, right: 12, top: this.safeTop })
+    .height(52)
+    .padding({ left: 12, right: CAPSULE_INSET_RIGHT })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }

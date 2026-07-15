@@ -8,6 +8,7 @@ import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
 import { WikiDoc, WikiVersion, WikiFilePayload } from '../models/Types';
 import { Icon } from '../common/Icon';
+import { CAPSULE_INSET_RIGHT } from '../common/SafeArea';
 
 /// 全屏 wiki 阅读页 — the native port of mobile-web/src/views/WikiDocView.tsx.
 /// Markdown docs render inline via the native MarkdownView. HTML / htmlDir docs
@@ -231,8 +232,8 @@ export struct WikiDocView {
         .onClick(() => this.handleExport())
     }
     .width('100%')
-    .height(52 + this.safeTop)
-    .padding({ left: 12, right: 12, top: this.safeTop })
+    .height(52)
+    .padding({ left: 12, right: CAPSULE_INSET_RIGHT })
     .backgroundColor(this.tk().bgGlass)
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }
