@@ -1,5 +1,6 @@
 import { util } from '@kit.ArkTS';
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, LengthMetrics } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
 import { t } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient, RelayRequestError } from '../common/Relay';
@@ -8,6 +9,7 @@ import { canResumeSession, canEnqueueSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
 import { Icon } from '../common/Icon';
 import { loadDraftRaw, saveDraftRaw, clearDraft } from '../common/Draft';
+import { Attachment, pickAndUploadAttachments, withContextFiles } from '../common/FileTransfer';
 
 /// New-session sheet + resume composer — the native port of
 /// mobile-web/src/views/Composer.tsx. NewSessionSheet spawns a fresh headless
@@ -20,9 +22,11 @@ import { loadDraftRaw, saveDraftRaw, clearDraft } from '../common/Draft';
 /// kill via PersistentStorage (see common/Draft.ets), restored on reopen and cleared
 /// on a successful spawn — mirrors mobile-web's useDraft("new-session", …).
 ///
-/// Deferred vs. web (device-only, land in P8 device validation): file attachments
-/// (needs the on-device file picker → `upload_attachment`). The essential workspace +
-/// prompt + model/effort/permission → spawn flow is fully wired here.
+/// Attachments (feature-gaps P5): the AttachmentBar picks files via the system
+/// DocumentViewPicker (@atomicservice), uploads them through `upload_attachment`,
+/// and withContextFiles appends the resolved paths to the prompt — mirrors
+/// mobile-web. Attachments stay in-memory per sheet (not persisted to the P2
+/// draft): they're already-uploaded relay artifacts, cheap to re-pick.
 ///
 /// ArkTS shape notes: relay params are declared interfaces (never Record
 /// literals); @Builder bodies hold only UI syntax; Select options are
@@ -242,6 +246,65 @@ struct OptionSelects {
   }
 }
 
+// ── Shared attachment bar (pick button + removable chips) ────────────────────
+
+@Component
+struct AttachmentBar {
+  @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  @StorageProp('lang') lang: string = 'zh';
+
+  @Prop attachments: Attachment[] = [];
+  @Prop uploading: boolean = false;
+  pickEnabled: boolean = true;
+  onPick: () => void = () => {};
+  onRemove: (path: string) => void = () => {};
+
+  private tk(): ColorTokens {
+    return themeTokens(this.resolvedTheme);
+  }
+
+  build() {
+    Column({ space: 6 }) {
+      Button() {
+        Row({ space: 4 }) {
+          Icon({ src: $r('app.media.ic_paperclip'), iconSize: 14, color: this.tk().text })
+          Text(this.uploading ? t('上传中…') : t('附件')).fontSize(13).fontColor(this.tk().text)
+        }
+      }
+      .backgroundColor(this.tk().bgInput)
+      .borderRadius(8)
+      .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+      .enabled(this.pickEnabled && !this.uploading)
+      .onClick(() => this.onPick())
+
+      if (this.attachments.length > 0) {
+        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
+          ForEach(this.attachments, (a: Attachment) => {
+            Row({ space: 4 }) {
+              Icon({ src: $r('app.media.ic_file_text'), iconSize: 12, color: this.tk().textSecondary })
+              Text(a.name)
+                .fontSize(12)
+                .fontColor(this.tk().text)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .constraintSize({ maxWidth: 140 })
+              Icon({ src: $r('app.media.ic_x'), iconSize: 12, color: this.tk().textDim })
+                .onClick(() => this.onRemove(a.path))
+            }
+            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .borderRadius(6)
+            .backgroundColor(this.tk().bgInput)
+            .border({ width: 1, color: this.tk().border })
+          }, (a: Attachment) => a.path)
+        }
+        .width('100%')
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+}
+
 // ── 新会话 sheet ─────────────────────────────────────────────────────────────
 
 @Component
@@ -262,9 +325,44 @@ export struct NewSessionSheet {
   @State private busy: boolean = false;
   @State private picking: boolean = false;
   @State private chatPath: string | null = null;
+  @State private attachments: Attachment[] = [];
+  @State private uploading: boolean = false;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private ctx(): common.UIAbilityContext {
+    return this.getUIContext().getHostContext() as common.UIAbilityContext;
+  }
+
+  /// Open the picker, upload, and append any newly-chosen files (dedup by path).
+  private pickAttachments(): void {
+    const client = this.client;
+    if (!client || this.uploading) {
+      return;
+    }
+    this.uploading = true;
+    pickAndUploadAttachments(client, this.ctx())
+      .then((picked: Attachment[]) => {
+        const next = this.attachments.slice();
+        for (const a of picked) {
+          if (!next.some((x: Attachment) => x.path === a.path)) {
+            next.push(a);
+          }
+        }
+        this.attachments = next;
+        this.uploading = false;
+      })
+      .catch((e: Object) => {
+        this.uploading = false;
+        const msg = e instanceof Error ? (e as Error).message : t('附件上传失败');
+        promptAction.showToast({ message: msg, duration: 2500 });
+      });
+  }
+
+  private removeAttachment(path: string): void {
+    this.attachments = this.attachments.filter((a: Attachment) => a.path !== path);
   }
 
   /// Snapshot the current form state to the persisted draft. Called after every
@@ -356,7 +454,8 @@ export struct NewSessionSheet {
     return this.client !== null
       && this.effectiveWorkspace().length > 0
       && this.prompt.trim().length > 0
-      && !this.busy;
+      && !this.busy
+      && !this.uploading;
   }
 
   private wsSelectIdx(): number {
@@ -387,7 +486,7 @@ export struct NewSessionSheet {
     this.busy = true;
     const params: SpawnParams = {
       workspacePath: this.effectiveWorkspace(),
-      prompt: this.prompt.trim(),
+      prompt: withContextFiles(this.prompt.trim(), this.attachments),
       sessionId,
     };
     if (this.model.length > 0) {
@@ -402,6 +501,7 @@ export struct NewSessionSheet {
     client.request<Object>('spawn_session', params)
       .then(() => {
         this.busy = false;
+        this.attachments = [];
         clearDraft(NEW_SESSION_DRAFT_KEY);
         this.onClose();
       })
@@ -496,6 +596,14 @@ export struct NewSessionSheet {
             this.saveDraftNow();
           })
 
+        AttachmentBar({
+          attachments: this.attachments,
+          uploading: this.uploading,
+          pickEnabled: this.client !== null,
+          onPick: () => this.pickAttachments(),
+          onRemove: (path: string) => this.removeAttachment(path),
+        })
+
         OptionSelects({
           model: this.model,
           effort: this.effort,
@@ -572,9 +680,43 @@ export struct ResumeComposer {
   @State private permissionMode: string = '';
   @State private busy: boolean = false;
   @State private sent: boolean = false;
+  @State private attachments: Attachment[] = [];
+  @State private uploading: boolean = false;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private ctx(): common.UIAbilityContext {
+    return this.getUIContext().getHostContext() as common.UIAbilityContext;
+  }
+
+  private pickAttachments(): void {
+    const client = this.client;
+    if (!client || this.uploading) {
+      return;
+    }
+    this.uploading = true;
+    pickAndUploadAttachments(client, this.ctx())
+      .then((picked: Attachment[]) => {
+        const next = this.attachments.slice();
+        for (const a of picked) {
+          if (!next.some((x: Attachment) => x.path === a.path)) {
+            next.push(a);
+          }
+        }
+        this.attachments = next;
+        this.uploading = false;
+      })
+      .catch((e: Object) => {
+        this.uploading = false;
+        const msg = e instanceof Error ? (e as Error).message : t('附件上传失败');
+        promptAction.showToast({ message: msg, duration: 2500 });
+      });
+  }
+
+  private removeAttachment(path: string): void {
+    this.attachments = this.attachments.filter((a: Attachment) => a.path !== path);
   }
 
   private isEnqueue(): boolean {
@@ -594,6 +736,7 @@ export struct ResumeComposer {
   private onSubmitDone(): void {
     this.busy = false;
     this.prompt = '';
+    this.attachments = [];
     this.sent = true;
     setTimeout(() => {
       this.sent = false;
@@ -614,7 +757,7 @@ export struct ResumeComposer {
   }
 
   private submitEnabled(): boolean {
-    if (this.busy || this.client === null) {
+    if (this.busy || this.uploading || this.client === null) {
       return false;
     }
     // Enqueue must have text; resume tolerates empty (= continue).
@@ -629,7 +772,7 @@ export struct ResumeComposer {
 
   private submit(): void {
     const client = this.client;
-    if (!client || this.busy) {
+    if (!client || this.busy || this.uploading) {
       return;
     }
     const trimmed = this.prompt.trim();
@@ -643,7 +786,7 @@ export struct ResumeComposer {
       const eparams: EnqueueParams = {
         sessionId: this.session.id,
         workspacePath: this.session.workspacePath,
-        text: trimmed,
+        text: withContextFiles(trimmed, this.attachments),
       };
       client.request<Object>('enqueue_message', eparams)
         .then(() => this.onSubmitDone())
@@ -655,9 +798,11 @@ export struct ResumeComposer {
       sessionId: this.session.id,
       workspacePath: this.session.workspacePath,
     };
-    // Empty prompt = "continue" (the relay side supplies the fallback).
-    if (trimmed.length > 0) {
-      params.prompt = trimmed;
+    // Empty prompt (and no attachments) = "continue" (relay supplies the
+    // fallback). Attachments alone still form a non-empty Context files: block.
+    const full = withContextFiles(trimmed, this.attachments);
+    if (full.length > 0) {
+      params.prompt = full;
     }
     if (this.model.length > 0) {
       params.model = this.model;
@@ -707,6 +852,13 @@ export struct ResumeComposer {
           .onChange((v: string) => {
             this.prompt = v;
           })
+        AttachmentBar({
+          attachments: this.attachments,
+          uploading: this.uploading,
+          pickEnabled: this.client !== null,
+          onPick: () => this.pickAttachments(),
+          onRemove: (path: string) => this.removeAttachment(path),
+        })
         Row({ space: 8 }) {
           if (!this.isEnqueue()) {
             Column() {

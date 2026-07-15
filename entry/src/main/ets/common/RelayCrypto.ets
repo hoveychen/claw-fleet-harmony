@@ -87,6 +87,14 @@ function gcmParams(iv: Uint8Array, authTag: Uint8Array): cryptoFramework.GcmPara
 /// sealed envelope; `ct` carries ciphertext||tag. Peer of Rust `seal`.
 export async function sealBytes(encKey: Uint8Array, plaintext: Uint8Array): Promise<SealedBox> {
   const iv = cryptoFramework.createRandom().generateRandomSync(GCM_IV_LEN).data;
+  return sealBytesIv(encKey, plaintext, iv);
+}
+
+/// Seal with a caller-supplied IV — used only by selfTest to check harmony's
+/// encrypt output byte-for-byte against the Rust frozen vector (the one direction
+/// the PASS path never exercised). Never use a fixed IV in production: GCM
+/// security requires a unique nonce per message.
+async function sealBytesIv(encKey: Uint8Array, plaintext: Uint8Array, iv: Uint8Array): Promise<SealedBox> {
   const symKey = await importAesKey(encKey);
   const cipher = cryptoFramework.createCipher('AES256|GCM|NoPadding');
   // authTag on encrypt is an output placeholder; its length must be the tag len.
@@ -156,6 +164,13 @@ export async function selfTest(): Promise<string> {
     const back = await openString(keys.encKey, box);
     if (back !== RUST_PLAINTEXT) {
       return `FAIL roundtrip=${back}`;
+    }
+    // Definitive encrypt-interop check: seal the frozen plaintext with the frozen
+    // IV and compare to the Rust ct. This is the ONLY assertion proving harmony's
+    // seal is desktop-openable (the request path depends on it).
+    const fixed = await sealBytesIv(keys.encKey, utf8(RUST_PLAINTEXT), b64.decodeSync(RUST_IV));
+    if (fixed.ct !== RUST_CT) {
+      return `FAIL seal-compat ct=${fixed.ct}`;
     }
     return 'PASS';
   } catch (e) {

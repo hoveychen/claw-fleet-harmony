@@ -122,6 +122,7 @@ const ENTRIES: [string, string][] = [
   ['该项目下没有文档。', 'No docs in this project.'],
   ['导出 / 分享', 'Export / share'],
   ['导出失败：{0}', 'Export failed: {0}'],
+  ['已导出到所选位置', 'Exported to the chosen location'],
   ['加载中…', 'Loading…'],
   ['渲染中…（正在拉取页面资源）', 'Rendering… (fetching page assets)'],
   ['最新', 'Latest'],

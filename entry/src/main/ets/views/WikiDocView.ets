@@ -1,6 +1,8 @@
 import { buffer } from '@kit.ArkTS';
 import { promptAction } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
 import { t, dateLocale } from '../common/I18n';
+import { exportWikiDoc } from '../common/FileTransfer';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { RelayClient } from '../common/Relay';
 import { MarkdownView } from '../common/Markdown';
@@ -19,9 +21,13 @@ import { Icon } from '../common/Icon';
 /// (mirrors mobile-web's onOpenDoc chain). The version selector resets to the
 /// newly-current doc's latest.
 ///
+/// Export (feature-gaps P5): the ⤴ header button fetches the current version via
+/// wiki_export and saves it through DocumentViewPicker.save (@atomicservice). The
+/// 元服务 SDK has no outbound share sheet (ShareKit absent), so this is save-to-
+/// location, not a share sheet — the "分享" half degrades to the save dialog.
+///
 /// Deferred vs. web (P8 device validation): full-fidelity HTML rendering (needs
-/// ArkWeb availability verified in 元服务 + the data-URI asset-inlining port) and
-/// export / share (needs the on-device file + share kits).
+/// ArkWeb availability verified in 元服务 + the data-URI asset-inlining port).
 ///
 /// ArkTS shape notes: relay params are declared interfaces; base64 → utf8 decode
 /// goes through `buffer`.
@@ -69,9 +75,36 @@ export struct WikiDocView {
   @State private version: string = '';
   @State private markdown: string | null = null;
   @State private error: string = '';
+  @State private exporting: boolean = false;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private ctx(): common.UIAbilityContext {
+    return this.getUIContext().getHostContext() as common.UIAbilityContext;
+  }
+
+  /// Export the current doc version to a user-chosen location. Cancelling the
+  /// save dialog is silent; a real failure toasts.
+  private handleExport(): void {
+    const client = this.client;
+    if (!client || this.exporting) {
+      return;
+    }
+    this.exporting = true;
+    exportWikiDoc(client, this.current().slug, this.version, this.ctx())
+      .then((saved: boolean) => {
+        this.exporting = false;
+        if (saved) {
+          promptAction.showToast({ message: t('已导出到所选位置'), duration: 2000 });
+        }
+      })
+      .catch((e: Object) => {
+        this.exporting = false;
+        const msg = e instanceof Error ? (e as Error).message : `${e}`;
+        promptAction.showToast({ message: t('导出失败：{0}', msg), duration: 2500 });
+      });
   }
 
   /// The doc currently on screen (top of the navigation stack). Falls back to
@@ -189,6 +222,12 @@ export struct WikiDocView {
             }
           })
       }
+      Icon({
+        src: $r('app.media.ic_download'),
+        iconSize: 18,
+        color: this.exporting ? this.tk().textDim : this.tk().accent,
+      })
+        .onClick(() => this.handleExport())
     }
     .width('100%')
     .height(52)
