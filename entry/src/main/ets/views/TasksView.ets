@@ -708,9 +708,9 @@ export struct TasksView {
 
       // Mark segment
       Row() {
-        this.segButton('all', t('全部'), this.countAll(), null)
-        this.segButton('pending', t('进行中'), this.countPending(), $r('app.media.ic_circle'))
-        this.segButton('done', t('已完成'), this.countDone(), $r('app.media.ic_circle_check_big'))
+        this.segButton('all', t('全部'), null)
+        this.segButton('pending', t('进行中'), $r('app.media.ic_circle'))
+        this.segButton('done', t('已完成'), $r('app.media.ic_circle_check_big'))
       }
       .width('100%')
       .borderRadius(10)
@@ -722,8 +722,24 @@ export struct TasksView {
     .padding({ left: 12, right: 12, top: 10, bottom: 8 })
   }
 
+  /// Count for a mark-filter segment. Reads the live @State (via preMark) *inside*
+  /// the builder's render scope so ArkUI subscribes to it — passing a precomputed
+  /// count by value into segButton would only refresh when filterBar itself re-runs
+  /// (on a search/activeOnly change), leaving the count stale when `sessions`
+  /// updates live without a filter interaction. Mirrors segButton's own
+  /// `this.markFilter === key` read and MainShell.badgeFor / MoreView.segActive.
+  private countFor(key: string): number {
+    if (key === 'pending') {
+      return this.countPending();
+    }
+    if (key === 'done') {
+      return this.countDone();
+    }
+    return this.countAll();
+  }
+
   @Builder
-  segButton(key: string, label: string, count: number, iconRes: Resource | null) {
+  segButton(key: string, label: string, iconRes: Resource | null) {
     Row({ space: 4 }) {
       if (iconRes !== null) {
         // web: pending=Circle 15 / done=CheckCircle2 16; active icon accent, inactive text-dim
@@ -736,7 +752,7 @@ export struct TasksView {
       Text(label)
         .fontSize(12)
         .fontColor(this.markFilter === key ? this.tk().text : this.tk().textDim)
-      Text(`${count}`).fontSize(11.5)
+      Text(`${this.countFor(key)}`).fontSize(11.5)
         .fontColor(this.markFilter === key ? this.tk().text : this.tk().textDim)
     }
     .layoutWeight(1)
