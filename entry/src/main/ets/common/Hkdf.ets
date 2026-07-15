@@ -64,11 +64,22 @@ async function hmacSha256(key: Uint8Array, msg: Uint8Array): Promise<Uint8Array>
   return await sha256(concat(opad, inner));
 }
 
-/// channel_token = hex( HKDF-SHA256(ikm=secret, salt=HKDF_SALT, info=INFO_CHANNEL, len=32) ).
-export async function deriveChannelToken(secret: string): Promise<string> {
+/// HKDF-SHA256 for a single-block (32-byte) output, keyed by the pairing secret.
+/// `okm = HMAC(PRK, info || 0x01)` where `PRK = HMAC(HKDF_SALT, secret)`.
+/// Byte-for-byte the peer of claw-fleet-core::relay_crypto::derive_keys.
+export async function hkdf32(secret: string, info: string): Promise<Uint8Array> {
   const prk = await hmacSha256(utf8(HKDF_SALT), utf8(secret));
-  // T(1) = HMAC(PRK, info || 0x01); OKM (32 bytes) = T(1).
-  const t1Input = concat(utf8(INFO_CHANNEL), new Uint8Array([0x01]));
+  const t1Input = concat(utf8(info), new Uint8Array([0x01]));
   const okm = await hmacSha256(prk, t1Input);
-  return toHex(okm.subarray(0, SHA256_LEN));
+  return okm.subarray(0, SHA256_LEN);
+}
+
+/// Lowercase hex of a byte array.
+export function bytesToHex(bytes: Uint8Array): string {
+  return toHex(bytes);
+}
+
+/// channel_token = hex( HKDF-SHA256(secret, salt, INFO_CHANNEL, 32) ).
+export async function deriveChannelToken(secret: string): Promise<string> {
+  return toHex(await hkdf32(secret, INFO_CHANNEL));
 }
