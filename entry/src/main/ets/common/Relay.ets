@@ -104,6 +104,10 @@ interface PendingEntry {
   // a real Error subclass at runtime (instanceof Error holds).
   reject: (e: Object) => void;
   timer: number;
+  // 方案 A:桌面早 ack{req_id} 到达时触发一次(提交已抵达桌面),promise 仍待最终
+  // reply 才 settle。acked 防重复触发。
+  onAck?: () => void;
+  acked?: boolean;
 }
 
 /// A failed `request`, tagged with whether the desktop actually rejected it
@@ -116,6 +120,14 @@ export class RelayRequestError extends Error {
     this.name = 'RelayRequestError';
     this.remote = remote;
   }
+}
+
+/// True when the desktop explicitly rejected the request (an `ok:false` reply) —
+/// as opposed to the reply never arriving. Callers with a grace-period / resend
+/// fallback must gate it on this being false, or they sit out the whole window /
+/// resend on an error the desktop already handed them. 对齐 mobile-web relay.ts。
+export function isDesktopRejection(e: Object): boolean {
+  return e instanceof RelayRequestError && (e as RelayRequestError).remote;
 }
 
 function toWsUrl(relayUrl: string): string {
@@ -493,6 +505,17 @@ export class RelayClient {
       case 'sessions':
         this.handlers.onSessions?.(payload.sessions ?? []);
         break;
+      case 'ack': {
+        // 早 ack(方案 A):桌面收到写 req 并开始处理。触发 onAck 一次;promise 仍
+        // 待最终 reply / 超时才 settle。
+        const reqId = payload.req_id ?? '';
+        const entry = this.pending.get(reqId);
+        if (entry && entry.onAck && entry.acked !== true) {
+          entry.acked = true;
+          entry.onAck();
+        }
+        break;
+      }
       case 'reply': {
         const reqId = payload.req_id ?? '';
         const entry = this.pending.get(reqId);
@@ -571,7 +594,7 @@ export class RelayClient {
 
   /// Data request to the agent (pending_snapshot / task_plans / …). `params` is
   /// a declared interface instance (never a `Record` literal — banned in ArkTS).
-  request<T>(method: string, params?: Object, timeoutMs?: number): Promise<T> {
+  request<T>(method: string, params?: Object, timeoutMs?: number, onAck?: () => void): Promise<T> {
     this.reqSeq += 1;
     const reqId = `${this.reqPrefix}-${this.reqSeq}`;
     return new Promise<T>((resolve: (v: T) => void, reject: (e: Object) => void) => {
@@ -587,6 +610,7 @@ export class RelayClient {
         resolve: (v: Object) => resolve(v as T),
         reject,
         timer,
+        onAck,
       };
       this.pending.set(reqId, entry);
       const reqFrame: ReqPayload = { event: 'req', req_id: reqId, method, params: params ?? new EmptyObj() };

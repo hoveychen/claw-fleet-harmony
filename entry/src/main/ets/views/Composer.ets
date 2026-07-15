@@ -3,7 +3,8 @@ import { promptAction, LengthMetrics } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { t } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
-import { RelayClient, RelayRequestError } from '../common/Relay';
+import { RelayClient, isDesktopRejection } from '../common/Relay';
+import { waitForSessionId } from '../common/SpawnConfirm';
 import { SessionInfo } from '../models/Types';
 import { canResumeSession, canEnqueueSession } from '../models/Types';
 import { DirPicker } from './DirPicker';
@@ -511,24 +512,75 @@ export struct NewSessionSheet {
     if (this.permissionMode.length > 0) {
       params.permissionMode = this.permissionMode;
     }
-    client.request<Object>('spawn_session', params)
-      .then(() => {
+    void this.spawnWithConfirm(client, params, sessionId);
+  }
+
+  /// 提交 spawn_session 并确认结果 —— 对齐 mobile-web/Composer.tsx::submit(方案 A+C):
+  /// 1) 收到桌面早 ack 即乐观关闭 sheet(提交已抵达桌面,不必干等 reply);
+  /// 2) 超时且未 ack → 重发一次同一 req(桌面按 sessionId 幂等去重,不会双开);
+  /// 3) 仍无果 → 进 waitForSessionId 宽限期盯快照兜底,真没出现才报错;
+  /// 桌面明确拒绝(路径不存在等)是权威失败,立即报错,不重发、不进宽限。
+  private async spawnWithConfirm(
+    client: RelayClient,
+    params: SpawnParams,
+    sessionId: string,
+  ): Promise<void> {
+    let settled = false;
+    const succeed = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.attachments = [];
+      clearDraft(NEW_SESSION_DRAFT_KEY);
+      this.onClose();
+    };
+    const onAck = (): void => succeed();
+    const toast = (e: Object): void => {
+      const msg = e instanceof Error ? (e as Error).message : t('创建会话失败');
+      promptAction.showToast({ message: msg, duration: 2500 });
+    };
+    try {
+      await client.request<Object>('spawn_session', params, undefined, onAck);
+      succeed(); // reply 到达同样成功,与 onAck 幂等
+      this.busy = false;
+      return;
+    } catch (e) {
+      if (isDesktopRejection(e as Object)) {
         this.busy = false;
-        this.attachments = [];
-        clearDraft(NEW_SESSION_DRAFT_KEY);
-        this.onClose();
-      })
-      .catch((e: Object) => {
+        toast(e as Object);
+        return;
+      }
+      if (settled) {
+        this.busy = false; // 已凭 ack 关闭,超时的 reject 忽略即可
+        return;
+      }
+      // 方案 C:重发一次(同 sessionId,桌面幂等去重不会双开)。
+      try {
+        await client.request<Object>('spawn_session', params, undefined, onAck);
+        succeed();
         this.busy = false;
-        // A desktop rejection (bad path, empty prompt…) is authoritative — the
-        // session can't exist. A timeout may still have spawned; say so softly.
-        const remote = e instanceof RelayRequestError && (e as RelayRequestError).remote;
-        const msg = e instanceof Error ? (e as Error).message : t('创建会话失败');
-        promptAction.showToast({
-          message: remote ? msg : t('创建会话失败'),
-          duration: 2500,
-        });
-      });
+        return;
+      } catch (e2) {
+        if (isDesktopRejection(e2 as Object)) {
+          this.busy = false;
+          toast(e2 as Object);
+          return;
+        }
+        if (settled) {
+          this.busy = false;
+          return;
+        }
+        // 最后兜底:桌面可能已 spawn 但 ack/reply 都丢了,盯快照确认。
+        const confirmed = await waitForSessionId(sessionId, () => this.sessions);
+        this.busy = false;
+        if (confirmed) {
+          succeed();
+        } else {
+          toast(e2 as Object);
+        }
+      }
+    }
   }
 
   build() {
