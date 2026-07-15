@@ -47,6 +47,7 @@ export struct MainShell {
   @State tab: string = 'decisions';
   onRepair: () => void = () => {};
   onNewSession: () => void = () => {};
+  onAuthError: (message: string) => void = () => {};
 
   // Relay link + snapshot state, pushed down to the tab bodies.
   @State private connected: boolean = false;
@@ -187,6 +188,11 @@ export struct MainShell {
       },
       onDecisionResolved: (_kind: string, id: string) => {
         this.removeDecision(id);
+      },
+      onAuthError: (message: string) => {
+        // Secret reset on the desktop — bubble up so Index shows the clear-secret
+        // page instead of leaving the shell spinning on a dead connection.
+        this.onAuthError(message);
       },
     };
     this.client = new RelayClient(pairing.relayUrl, pairing.secret, handlers, () => this.deviceInfo());

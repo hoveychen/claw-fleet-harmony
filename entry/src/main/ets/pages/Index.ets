@@ -4,6 +4,7 @@ import { RelayStore } from '../common/RelayStore';
 import { registerForPush } from '../common/PushRegister';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { handleBack } from '../common/BackStack';
+import { t } from '../common/I18n';
 import { GateView } from '../views/GateView';
 import { MainShell } from '../views/MainShell';
 
@@ -18,6 +19,10 @@ struct Index {
   @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
   @State private paired: boolean = false;
   @State private checking: boolean = true;
+  // Relay auth failure on a paired launch (secret reset on the desktop). Mirrors
+  // mobile-web's authError page: an explicit "清除本机密钥" exit rather than a
+  // dead status string.
+  @State private authError: string = '';
 
   private ctx(): common.UIAbilityContext {
     return this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -64,7 +69,45 @@ struct Index {
 
   private async doRepair(): Promise<void> {
     await RelayStore.clearPairing(this.ctx());
+    this.authError = '';
     this.paired = false;
+  }
+
+  /// Paired-but-auth-failed page (secret reset on the desktop). Mirrors
+  /// mobile-web's authError gate: a clear-secret button, not a dead status line.
+  @Builder
+  authErrorPage() {
+    Column({ space: 20 }) {
+      Text('F')
+        .fontSize(40)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#ffffff')
+        .width(76)
+        .height(76)
+        .borderRadius(19)
+        .backgroundColor(this.tk().accent)
+        .textAlign(TextAlign.Center)
+      Text(t('配对失败'))
+        .fontSize(24)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(this.tk().text)
+      Text(t('{0}。密钥可能已被重置，请回到桌面端重新扫码。', this.authError))
+        .fontSize(15)
+        .fontColor(this.tk().textSecondary)
+        .textAlign(TextAlign.Center)
+        .lineHeight(22)
+      Button(t('清除本机密钥'))
+        .width('72%')
+        .backgroundColor(this.tk().accent)
+        .onClick(() => {
+          this.doRepair();
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .padding({ left: 24, right: 24 })
+    .backgroundColor(this.tk().bg)
   }
 
   build() {
@@ -82,8 +125,11 @@ struct Index {
         .backgroundColor(this.tk().bg)
       } else if (!this.paired) {
         GateView({ onPaired: () => {
+          this.authError = '';
           this.paired = true;
         } })
+      } else if (this.authError.length > 0) {
+        this.authErrorPage()
       } else {
         MainShell({
           onRepair: () => {
@@ -91,6 +137,9 @@ struct Index {
           },
           onNewSession: () => {
             // New-session composer lands in P6.
+          },
+          onAuthError: (message: string) => {
+            this.authError = message;
           },
         })
       }
