@@ -24,13 +24,23 @@ export interface MdSpan {
   href: string;
 }
 
-export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol';
+export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table';
+
+/// A GFM pipe table. `aligns[c]` is the column alignment (-1 left / 0 centre /
+/// 1 right); `header` is the header row's cells, each a run of inline spans;
+/// `rows` is the body, row → cell → spans.
+export interface MdTable {
+  aligns: number[];
+  header: MdSpan[][];
+  rows: MdSpan[][][];
+}
 
 export interface MdBlock {
   kind: MdBlockKind;
   spans: MdSpan[];
   code: string;
   ordinal: number;
+  table?: MdTable;
 }
 
 function mkSpan(text: string, bold: boolean, italic: boolean, code: boolean, link: boolean, href: string): MdSpan {
@@ -56,6 +66,78 @@ function orderedMarker(line: string): number {
     return i + 2;
   }
   return -1;
+}
+
+/// Split one pipe-table row into raw cell strings, dropping the optional
+/// leading/trailing `|` (so `| a | b |` and `a | b` both yield [" a "," b "]).
+/// Escaped `\|` is not handled — cards don't use it.
+function splitTableRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith('|')) {
+    s = s.substring(1);
+  }
+  if (s.endsWith('|')) {
+    s = s.substring(0, s.length - 1);
+  }
+  return s.split('|');
+}
+
+/// True when a line is a table delimiter row — every cell is `:?-+:?` (dashes
+/// with optional leading/trailing colon for alignment), e.g. `|:--|--:|:-:|`.
+function isTableSeparator(trimmed: string): boolean {
+  if (trimmed.indexOf('-') < 0) {
+    return false;
+  }
+  const cells = splitTableRow(trimmed);
+  if (cells.length === 0) {
+    return false;
+  }
+  let k = 0;
+  while (k < cells.length) {
+    const cell = cells[k].trim();
+    let dash = false;
+    let m = 0;
+    if (cell.length === 0) {
+      return false;
+    }
+    while (m < cell.length) {
+      const ch = cell.charAt(m);
+      if (ch === '-') {
+        dash = true;
+      } else if (ch !== ':' && ch !== ' ') {
+        return false;
+      }
+      m++;
+    }
+    if (!dash) {
+      return false;
+    }
+    k++;
+  }
+  return true;
+}
+
+/// Column alignment from a delimiter cell: `:-` left(-1), `-:` right(1),
+/// `:-:` centre(0); bare `-` defaults to left(-1).
+function cellAlign(cell: string): number {
+  const c = cell.trim();
+  const left = c.startsWith(':');
+  const right = c.endsWith(':');
+  if (left && right) {
+    return 0;
+  }
+  if (right) {
+    return 1;
+  }
+  return -1;
+}
+
+/// True when `line` opens a pipe table — it has a `|` and the following line is
+/// a delimiter row. Used both to start a table and to stop paragraph folding.
+function tableStartsAt(lines: string[], i: number): boolean {
+  return lines[i].indexOf('|') >= 0
+    && i + 1 < lines.length
+    && isTableSeparator(lines[i + 1].trim());
 }
 
 function isBlockStart(trimmed: string): boolean {
@@ -166,6 +248,28 @@ export function parseBlocks(md: string): MdBlock[] {
       olCounter = 0;
       continue;
     }
+    if (tableStartsAt(lines, i)) {
+      const headerCells = splitTableRow(trimmed);
+      const sepCells = splitTableRow(lines[i + 1].trim());
+      const aligns: number[] = [];
+      let c = 0;
+      while (c < headerCells.length) {
+        aligns.push(c < sepCells.length ? cellAlign(sepCells[c]) : -1);
+        c++;
+      }
+      const header: MdSpan[][] = headerCells.map((cell: string): MdSpan[] => parseInline(cell.trim()));
+      const rows: MdSpan[][][] = [];
+      i += 2;
+      while (i < lines.length && lines[i].indexOf('|') >= 0 && lines[i].trim().length > 0) {
+        const cells = splitTableRow(lines[i].trim());
+        rows.push(cells.map((cell: string): MdSpan[] => parseInline(cell.trim())));
+        i++;
+      }
+      const table: MdTable = { aligns, header, rows };
+      out.push({ kind: 'table', spans: [], code: '', ordinal: 0, table });
+      olCounter = 0;
+      continue;
+    }
     if (trimmed.startsWith('### ')) {
       out.push({ kind: 'h3', spans: parseInline(trimmed.substring(4)), code: '', ordinal: 0 });
       i++;
@@ -201,7 +305,7 @@ export function parseBlocks(md: string): MdBlock[] {
     // paragraph: fold consecutive plain lines into one soft-wrapped block
     const buf: string[] = [line];
     i++;
-    while (i < lines.length && !isBlockStart(lines[i].trim())) {
+    while (i < lines.length && !isBlockStart(lines[i].trim()) && !tableStartsAt(lines, i)) {
       buf.push(lines[i]);
       i++;
     }
@@ -251,9 +355,61 @@ export struct MarkdownView {
     return s.link || s.code ? this.tk().accent : this.baseColor();
   }
 
+  private cellTextAlign(aligns: number[], idx: number): TextAlign {
+    const a = idx < aligns.length ? aligns[idx] : -1;
+    if (a === 0) {
+      return TextAlign.Center;
+    }
+    if (a === 1) {
+      return TextAlign.End;
+    }
+    return TextAlign.Start;
+  }
+
+  @Builder
+  tableCell(cell: MdSpan[], aligns: number[], idx: number, header: boolean) {
+    Text() {
+      ForEach(cell, (s: MdSpan) => {
+        Span(s.text)
+          .fontWeight(header || s.bold ? FontWeight.Bold : FontWeight.Normal)
+          .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
+          .fontColor(this.spanColor(s))
+      })
+    }
+    .layoutWeight(1)
+    .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+    .fontSize(this.mdFontSize - 1)
+    .fontColor(header ? this.tk().text : this.baseColor())
+    .textAlign(this.cellTextAlign(aligns, idx))
+    .border({ width: 0.5, color: this.tk().border })
+    .backgroundColor(header ? this.tk().bgInput : Color.Transparent)
+  }
+
   @Builder
   blockView(b: MdBlock) {
-    if (b.kind === 'code') {
+    if (b.kind === 'table' && b.table) {
+      Column() {
+        Row() {
+          ForEach(b.table.header, (cell: MdSpan[], idx: number) => {
+            this.tableCell(cell, b.table!.aligns, idx, true)
+          })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+        ForEach(b.table.rows, (row: MdSpan[][]) => {
+          Row() {
+            ForEach(row, (cell: MdSpan[], idx: number) => {
+              this.tableCell(cell, b.table!.aligns, idx, false)
+            })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+        })
+      }
+      .width('100%')
+      .borderRadius(6)
+      .clip(true)
+    } else if (b.kind === 'code') {
       Text(b.code)
         .fontSize(this.mdFontSize - 1)
         .fontColor(this.tk().text)
