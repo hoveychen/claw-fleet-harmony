@@ -260,9 +260,17 @@ export interface SearchHit {
   rank: number;
 }
 
-/// Sessions Fleet spawned itself ("新会话" / handoff relay).
+/// Codex has no `CLAUDE_CODE_ENTRYPOINT`; the Codex scanner surfaces the rollout
+/// `originator` in the same `entrypoint` field, and Fleet-launched Codex sessions
+/// carry `originator === "fleet"` — mirrors codex_launch::CODEX_FLEET_ORIGINATOR.
+export const CODEX_FLEET_ORIGINATOR: string = 'fleet';
+
+/// Sessions Fleet spawned itself ("新会话" / handoff relay / a Fleet-spawned Codex
+/// session) — the only ones the 启动台 lists and the detail view can resume.
 export function isFleetOwnedEntrypoint(entrypoint?: string | null): boolean {
-  return entrypoint === 'claw-fleet-newsession' || entrypoint === 'claw-fleet-handoff';
+  return entrypoint === 'claw-fleet-newsession'
+    || entrypoint === 'claw-fleet-handoff'
+    || entrypoint === CODEX_FLEET_ORIGINATOR;
 }
 
 export function isSessionUnread(s: SessionInfo): boolean {
