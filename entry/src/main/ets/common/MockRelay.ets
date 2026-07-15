@@ -73,9 +73,11 @@ export class MockRelayClient extends RelayClient {
   kickNow(_reason: string): void {}
   sayGoodbye(): void {}
 
-  // Answering a decision card is a write: the view removes the card optimistically
-  // via onAnswered, so a no-op here leaves the demo feeling responsive.
-  answer(_payload: Object): void {}
+  // Answering a decision card is a write. Report true (socket "open") so the
+  // view removes the card optimistically, keeping the demo responsive.
+  answer(_payload: Object): boolean {
+    return true;
+  }
 
   request<T>(method: string, _params?: Object, _timeoutMs?: number): Promise<T> {
     return Promise.resolve(this.replyFor(method) as T);
