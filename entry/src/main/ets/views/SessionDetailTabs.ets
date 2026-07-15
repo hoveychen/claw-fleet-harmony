@@ -274,10 +274,10 @@ export struct DecisionHistoryTab {
   @Builder
   elicitationBody(r: ElicitationHistoryRecord) {
     Column({ space: 8 }) {
-      ForEach(r.questions, (q: ElicitationQuestion) => {
+      ForEach(r.questions ?? [], (q: ElicitationQuestion) => {
         Column({ space: 4 }) {
           Text(q.question).fontSize(12).fontColor(this.tk().text).fontWeight(FontWeight.Medium)
-          ForEach(q.options, (o: ElicitationOption) => {
+          ForEach(q.options ?? [], (o: ElicitationOption) => {
             Text(o.label)
               .fontSize(12)
               .fontColor(this.pickedLabel(r, q.question) === o.label ? this.tk().accent : this.tk().textSecondary)
@@ -471,7 +471,7 @@ export struct TaskPlansTab {
       if (p.title !== undefined && p.title !== null && p.title.length > 0) {
         Text(p.title).fontSize(13).fontColor(this.tk().text).fontWeight(FontWeight.Medium).width('100%')
       }
-      ForEach(p.items, (item: TaskItem) => {
+      ForEach(p.items ?? [], (item: TaskItem) => {
         Row({ space: 8 }) {
           Stack() {
             if (item.done) {
@@ -717,7 +717,7 @@ export struct WorkflowTab {
       if (tree.description !== undefined && tree.description !== null && tree.description.length > 0) {
         Text(tree.description).fontSize(11).fontColor(this.tk().textDim).width('100%')
       }
-      ForEach(tree.agents, (a: WorkflowAgentInfo) => {
+      ForEach(tree.agents ?? [], (a: WorkflowAgentInfo) => {
         Row({ space: 8 }) {
           Text(this.statusLabel(a.status))
             .fontSize(11)
@@ -810,7 +810,7 @@ export struct HandoffTab {
     if (chain === null) {
       return out;
     }
-    for (const l of chain.links) {
+    for (const l of chain.links ?? []) {
       if (out.length === 0 || out[out.length - 1] !== l.fromSessionId) {
         out.push(l.fromSessionId);
       }
@@ -871,7 +871,7 @@ export struct HandoffTab {
     Column({ space: 8 }) {
       Text(`${t('接力 {0} 棒', this.hops().length)}${this.currentLegLabel()}`)
         .fontSize(12).fontColor(this.tk().textDim).width('100%')
-      ForEach(chain.links, (l: HandoffLink, index: number) => {
+      ForEach(chain.links ?? [], (l: HandoffLink, index: number) => {
         this.linkCard(l, index)
       })
     }

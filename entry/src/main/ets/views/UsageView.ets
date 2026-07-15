@@ -513,7 +513,7 @@ export struct UsageView {
           this.chartCard()
 
           if (this.data !== null) {
-            ForEach(this.data.sources, (s: SourceUsage) => {
+            ForEach(this.data.sources ?? [], (s: SourceUsage) => {
               this.sectionLabel(this.sourceLabel(s.source))
               this.sourceCard(s)
             }, (s: SourceUsage) => s.source)
