@@ -140,13 +140,29 @@ export struct MoreView {
     .onClick(onTap)
   }
 
+  /// Whether the (group, value) segment is the selected one. Reads the live
+  /// @StorageProp *inside* the builder's render scope so ArkUI subscribes to it —
+  /// passing a precomputed `active` boolean by value into the @Builder would NOT
+  /// re-render the pill when the setting changes (the highlight would freeze even
+  /// though the setting took effect). Mirrors TasksView.segButton's `this.markFilter === key`.
+  private segActive(group: string, value: string): boolean {
+    if (group === 'lang') {
+      return (this.lang === 'en' ? 'en' : 'zh') === value;
+    }
+    if (group === 'theme') {
+      return this.themeMode === value;
+    }
+    // 'wake'
+    return (this.keepScreenOn ? 'on' : 'off') === value;
+  }
+
   @Builder
-  segButton(label: string, active: boolean, onTap: () => void) {
+  segButton(group: string, value: string, label: string, onTap: () => void) {
     Text(label)
       .fontSize(13)
-      .fontWeight(active ? 600 : FontWeight.Normal)
-      .fontColor(active ? this.tk().accent : this.tk().textSecondary)
-      .backgroundColor(active ? this.tk().accentSoft : Color.Transparent)
+      .fontWeight(this.segActive(group, value) ? 600 : FontWeight.Normal)
+      .fontColor(this.segActive(group, value) ? this.tk().accent : this.tk().textSecondary)
+      .backgroundColor(this.segActive(group, value) ? this.tk().accentSoft : Color.Transparent)
       .padding({ top: 5, bottom: 5, left: 13, right: 13 })
       .borderRadius(6)
       .onClick(onTap)
@@ -164,8 +180,8 @@ export struct MoreView {
     Row() {
       this.segShellStart(t('语言'))
       Row({ space: 4 }) {
-        this.segButton('中文', this.lang !== 'en', () => setLang('zh'))
-        this.segButton('English', this.lang === 'en', () => setLang('en'))
+        this.segButton('lang', 'zh', '中文', () => setLang('zh'))
+        this.segButton('lang', 'en', 'English', () => setLang('en'))
       }
       .padding(3)
       .backgroundColor(this.tk().bgSecondary)
@@ -183,9 +199,9 @@ export struct MoreView {
     Row() {
       this.segShellStart(t('主题'))
       Row({ space: 4 }) {
-        this.segButton(t('跟随系统'), this.themeMode === 'system', () => setThemeMode('system' as ThemeMode))
-        this.segButton(t('亮色'), this.themeMode === 'light', () => setThemeMode('light' as ThemeMode))
-        this.segButton(t('暗色'), this.themeMode === 'dark', () => setThemeMode('dark' as ThemeMode))
+        this.segButton('theme', 'system', t('跟随系统'), () => setThemeMode('system' as ThemeMode))
+        this.segButton('theme', 'light', t('亮色'), () => setThemeMode('light' as ThemeMode))
+        this.segButton('theme', 'dark', t('暗色'), () => setThemeMode('dark' as ThemeMode))
       }
       .padding(3)
       .backgroundColor(this.tk().bgSecondary)
@@ -203,8 +219,8 @@ export struct MoreView {
     Row() {
       this.segShellStart(t('屏幕常亮'))
       Row({ space: 4 }) {
-        this.segButton(t('关'), !this.keepScreenOn, () => setKeepScreenOn(this.ctx(), false))
-        this.segButton(t('开'), this.keepScreenOn, () => setKeepScreenOn(this.ctx(), true))
+        this.segButton('wake', 'off', t('关'), () => setKeepScreenOn(this.ctx(), false))
+        this.segButton('wake', 'on', t('开'), () => setKeepScreenOn(this.ctx(), true))
       }
       .padding(3)
       .backgroundColor(this.tk().bgSecondary)
