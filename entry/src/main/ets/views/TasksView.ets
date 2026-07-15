@@ -6,6 +6,7 @@ import { SearchHit, SessionInfo, SessionStatus } from '../models/Types';
 import { isFleetOwnedEntrypoint } from '../models/Types';
 import { EmptyState } from './EmptyState';
 import { Icon } from '../common/Icon';
+import { loadDraftRaw, saveDraftRaw } from '../common/Draft';
 
 /// The 任务 tab — the native port of mobile-web/src/views/TasksView.tsx. Renders
 /// the desktop's live sessions snapshot (pushed over the relay), scoped to the
@@ -192,7 +193,8 @@ export struct TasksView {
   client: RelayClient | null = null;
   onOpenSession: (session: SessionInfo) => void = () => {};
 
-  // Local UI state.
+  // Local UI state. 四个筛选项的初值在 aboutToAppear 里从 Draft.ets 的持久化槽恢复
+  // (见 restoreFilters),所以切标签页卸载重挂、乃至系统杀掉应用再开都不复位。
   @State private search: string = '';
   @State private workspace: string = '';
   @State private activeOnly: boolean = false;
@@ -217,7 +219,20 @@ export struct TasksView {
   }
 
   aboutToAppear(): void {
+    this.restoreFilters();
     this.fetchChatWorkspace();
+  }
+
+  /// 恢复上次的筛选态。四个筛选项落在 Draft.ets 的 PersistentStorage 槽里(与 Composer
+  /// 草稿同一套持久化机制),tab 切换销毁重建、乃至系统杀掉应用再开都从磁盘取回,不复位。
+  /// 瞬时态(busyOp / markOverride / FTS 结果)不落盘。恢复搜索词后补跑一次 runSearch,
+  /// 让全文检索结果也一并重建,而不是等用户再敲一下才回来。
+  private restoreFilters(): void {
+    this.search = loadDraftRaw('tasks:search') ?? '';
+    this.workspace = loadDraftRaw('tasks:workspace') ?? '';
+    this.activeOnly = loadDraftRaw('tasks:activeOnly') === '1';
+    this.markFilter = loadDraftRaw('tasks:markFilter') ?? 'all';
+    this.runSearch();
   }
 
   aboutToDisappear(): void {
@@ -314,8 +329,26 @@ export struct TasksView {
     return entries[idx].label;
   }
 
-  private matchesWorkspace(s: SessionInfo): boolean {
+  /// 持久化的目录 key 可能比它的会话活得久(会话都完成被裁掉、或本次启动还没碰那个 repo)。
+  /// 直接拿旧 key 过滤会把列表悄悄清空,而下拉因为 filterEntries 里找不到该 key 会回落显示
+  /// 「全部目录」——看着像 bug。这里在过滤时把「真实路径但当前无任何会话」的 key 当作「全部
+  /// 目录」,与下拉显示保持一致;会话回来后 workspaceRefs 重新收录该 key,过滤自动复活。
+  /// chat 两个伪值本身在 matchesWorkspace 里会降级为 all,原样保留。
+  private resolvedWorkspace(): string {
     const f = this.workspace;
+    if (f.length === 0 || f === CHAT_ONLY || f === CHAT_HIDDEN) {
+      return f;
+    }
+    for (const r of this.workspaceRefs()) {
+      if (r.path === f) {
+        return f;
+      }
+    }
+    return '';
+  }
+
+  private matchesWorkspace(s: SessionInfo): boolean {
+    const f = this.resolvedWorkspace();
     if (f.length === 0) {
       return true;
     }
@@ -614,6 +647,7 @@ export struct TasksView {
           .padding({ top: 6, bottom: 6 })
           .onChange((v: string) => {
             this.search = v;
+            saveDraftRaw('tasks:search', v);
             this.runSearch();
           })
         if (this.searching) {
@@ -639,6 +673,7 @@ export struct TasksView {
           .onSelect((index: number) => {
             const entries = this.filterEntries();
             this.workspace = entries[index].key;
+            saveDraftRaw('tasks:workspace', this.workspace);
           })
         Row({ space: 4 }) {
           Circle({ width: 7, height: 7 }).fill(this.tk().success)
@@ -653,6 +688,7 @@ export struct TasksView {
         .border({ width: 1, color: this.activeOnly ? this.tk().accent : this.tk().border })
         .onClick(() => {
           this.activeOnly = !this.activeOnly;
+          saveDraftRaw('tasks:activeOnly', this.activeOnly ? '1' : '');
         })
         if (this.unreadVisible().length > 0) {
           Text(t('全部已读 ({0})', this.unreadVisible().length))
@@ -696,6 +732,7 @@ export struct TasksView {
     .backgroundColor(this.markFilter === key ? this.tk().bgCard : Color.Transparent)
     .onClick(() => {
       this.markFilter = key;
+      saveDraftRaw('tasks:markFilter', key);
     })
   }
 
