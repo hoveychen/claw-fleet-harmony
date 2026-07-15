@@ -484,7 +484,7 @@ export struct SessionDetailView {
   header() {
     Row({ space: 8 }) {
       Row({ space: 2 }) {
-        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 20, color: this.tk().accent })
+        Icon({ src: $r('app.media.ic_chevron_left'), iconSize: 18, color: this.tk().accent })
         Text(t('返回')).fontSize(14).fontColor(this.tk().accent)
       }
       .onClick(() => this.onBack())
@@ -818,7 +818,7 @@ struct TaskNotificationCard {
   build() {
     Column({ space: 6 }) {
       Row({ space: 6 }) {
-        Icon({ src: $r('app.media.ic_bot'), iconSize: 14, color: this.tk().textSecondary })
+        Icon({ src: $r('app.media.ic_bot'), iconSize: 15, color: this.tk().accent })
         Text(taskTitle(this.parsed.summary))
           .fontSize(13).fontColor(this.tk().text).fontWeight(FontWeight.Medium)
           .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -831,7 +831,7 @@ struct TaskNotificationCard {
         if (this.hasBody()) {
           Icon({
             src: this.open ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
-            iconSize: 13,
+            iconSize: 14,
             color: this.tk().textDim,
           })
         }

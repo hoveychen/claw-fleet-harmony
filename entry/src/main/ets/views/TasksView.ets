@@ -465,6 +465,11 @@ export struct TasksView {
     return stopMode(s) === 'interrupt' ? this.tk().warning : this.tk().error;
   }
 
+  /// web .stopButton border: rgba(error, .35) / interrupt rgba(warning, .4)
+  private stopBorderColor(s: SessionInfo): string {
+    return stopMode(s) === 'interrupt' ? '#66fbbf24' : '#59f87171';
+  }
+
   // ── Actions ─────────────────────────────────────────────────────────────────
 
   private runSearch(): void {
@@ -637,7 +642,7 @@ export struct TasksView {
     Column({ space: 8 }) {
       // Search
       Row({ space: 6 }) {
-        Icon({ src: $r('app.media.ic_search'), iconSize: 16, color: this.tk().textDim })
+        Icon({ src: $r('app.media.ic_search'), iconSize: 14, color: this.tk().textDim })
         TextInput({ text: this.search, placeholder: t('搜索标题、计划、全文…') })
           .layoutWeight(1)
           .fontSize(14)
@@ -679,12 +684,12 @@ export struct TasksView {
           Circle({ width: 7, height: 7 }).fill(this.tk().success)
           Text(t('仅活跃'))
             .fontSize(12)
-            .fontColor(this.activeOnly ? this.tk().accent : this.tk().textSecondary)
+            .fontColor(this.activeOnly ? this.tk().accent : this.tk().textDim)
           Text(`${this.activeCount()}`).fontSize(11).fontColor(this.tk().textDim)
         }
         .padding({ left: 10, right: 10, top: 6, bottom: 6 })
         .borderRadius(8)
-        .backgroundColor(this.activeOnly ? this.tk().accentSoft : this.tk().bgInput)
+        .backgroundColor(this.activeOnly ? this.tk().accentSoft : this.tk().bgCard)
         .border({ width: 1, color: this.activeOnly ? this.tk().accent : this.tk().border })
         .onClick(() => {
           this.activeOnly = !this.activeOnly;
@@ -696,7 +701,6 @@ export struct TasksView {
             .fontColor(this.tk().accent)
             .padding({ left: 10, right: 10, top: 6, bottom: 6 })
             .borderRadius(8)
-            .backgroundColor(this.tk().accentSoft)
             .onClick(() => this.markReadAll(this.unreadVisible()))
         }
       }
@@ -709,8 +713,9 @@ export struct TasksView {
         this.segButton('done', t('已完成'), this.countDone(), $r('app.media.ic_circle_check_big'))
       }
       .width('100%')
-      .borderRadius(8)
-      .backgroundColor(this.tk().bgInput)
+      .borderRadius(10)
+      .backgroundColor(this.tk().bgSecondary)
+      .border({ width: 1, color: this.tk().border })
       .padding(3)
     }
     .width('100%')
@@ -721,12 +726,18 @@ export struct TasksView {
   segButton(key: string, label: string, count: number, iconRes: Resource | null) {
     Row({ space: 4 }) {
       if (iconRes !== null) {
-        Icon({ src: iconRes, iconSize: 13, color: this.markFilter === key ? this.tk().text : this.tk().textSecondary })
+        // web: pending=Circle 15 / done=CheckCircle2 16; active icon accent, inactive text-dim
+        Icon({
+          src: iconRes,
+          iconSize: key === 'done' ? 16 : 15,
+          color: this.markFilter === key ? this.tk().accent : this.tk().textDim
+        })
       }
       Text(label)
         .fontSize(12)
-        .fontColor(this.markFilter === key ? this.tk().text : this.tk().textSecondary)
-      Text(`${count}`).fontSize(11).fontColor(this.tk().textDim)
+        .fontColor(this.markFilter === key ? this.tk().text : this.tk().textDim)
+      Text(`${count}`).fontSize(11.5)
+        .fontColor(this.markFilter === key ? this.tk().text : this.tk().textDim)
     }
     .layoutWeight(1)
     .justifyContent(FlexAlign.Center)
@@ -766,7 +777,7 @@ export struct TasksView {
       // Meta
       Flex({ wrap: FlexWrap.Wrap }) {
         Row({ space: 3 }) {
-          Icon({ src: $r('app.media.ic_folder'), iconSize: 12, color: this.tk().textDim })
+          Icon({ src: $r('app.media.ic_folder'), iconSize: 11, color: this.tk().textDim })
           Text(s.workspaceName)
             .fontSize(12)
             .fontColor(this.tk().textDim)
@@ -778,7 +789,7 @@ export struct TasksView {
 
         if (s.handoff) {
           Row({ space: 3 }) {
-            Icon({ src: $r('app.media.ic_share_2'), iconSize: 12, color: this.tk().textDim })
+            Icon({ src: $r('app.media.ic_share_2'), iconSize: 11, color: this.tk().textDim })
             Text(`${s.handoff.hop}/${s.handoff.chainLen}`).fontSize(12).fontColor(this.tk().textDim)
           }
           .margin({ right: 10 })
@@ -817,14 +828,13 @@ export struct TasksView {
         Stack() {
           Icon({
             src: this.effectiveMark(s) === 'done' ? $r('app.media.ic_circle_check_big') : $r('app.media.ic_circle'),
-            iconSize: 15,
+            iconSize: this.effectiveMark(s) === 'done' ? 16 : 15,
             color: this.effectiveMark(s) === 'done' ? this.tk().success : this.tk().textDim
           })
         }
         .width(30)
         .height(26)
-        .borderRadius(6)
-        .backgroundColor(this.effectiveMark(s) === 'done' ? this.tk().accentSoft : Color.Transparent)
+        .borderRadius(13)
         .onClick(() => this.setMark(s, this.effectiveMark(s) !== 'done'))
         Blank()
         if (!s.isSubagent && stopMode(s) !== 'spent') {
@@ -839,8 +849,8 @@ export struct TasksView {
             }
           }
           .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-          .borderRadius(6)
-          .border({ width: 1, color: this.stopColor(s) })
+          .borderRadius(999)
+          .border({ width: 1, color: this.stopBorderColor(s) })
           .onClick(() => {
             if (this.busyOp !== s.id) {
               this.handleStop(s);

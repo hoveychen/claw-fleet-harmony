@@ -98,7 +98,7 @@ export struct DirPicker {
             .fontWeight(FontWeight.Bold)
             .fontColor(this.tk().text)
             .layoutWeight(1)
-          Icon({ src: $r('app.media.ic_x'), iconSize: 16, color: this.tk().textDim })
+          Icon({ src: $r('app.media.ic_x'), iconSize: 18, color: this.tk().textDim })
             .onClick(() => this.onClose())
         }
         .width('100%')
@@ -161,7 +161,9 @@ export struct DirPicker {
 
         Button(t('用这个目录'))
           .width('100%')
-          .fontSize(15)
+          .fontSize(14)
+          .fontWeight(600)
+          .borderRadius(10)
           .fontColor('#ffffff')
           .backgroundColor(this.tk().accent)
           .enabled(this.data !== null)

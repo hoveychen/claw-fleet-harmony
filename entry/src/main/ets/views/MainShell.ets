@@ -347,7 +347,7 @@ export struct MainShell {
   tabItem(key: string, icon: Resource, label: string, badge: number) {
     Column({ space: 2 }) {
       Stack({ alignContent: Alignment.TopEnd }) {
-        Icon({ src: icon, iconSize: 22, color: this.tab === key ? this.tk().accent : this.tk().textSecondary })
+        Icon({ src: icon, iconSize: 20, color: this.tab === key ? this.tk().accent : this.tk().textDim })
         if (badge > 0) {
           Text(badge > 99 ? '99+' : `${badge}`)
             .fontSize(9)
@@ -361,8 +361,9 @@ export struct MainShell {
         }
       }
       Text(label)
-        .fontSize(11)
-        .fontColor(this.tab === key ? this.tk().accent : this.tk().textSecondary)
+        .fontSize(10.5)
+        .fontWeight(this.tab === key ? 600 : 500)
+        .fontColor(this.tab === key ? this.tk().accent : this.tk().textDim)
     }
     .layoutWeight(1)
     .height('100%')
@@ -378,7 +379,7 @@ export struct MainShell {
     Stack({ alignContent: Alignment.Bottom }) {
       Text(t('新会话'))
         .fontSize(10.5)
-        .fontWeight(FontWeight.Medium)
+        .fontWeight(600)
         .fontColor(this.tk().accent)
         .margin({ bottom: 6 })
       Stack() {
