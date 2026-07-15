@@ -22,6 +22,7 @@ export interface MdSpan {
   code: boolean;
   link: boolean;
   href: string;
+  strike: boolean;
 }
 
 export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table' | 'quote';
@@ -43,13 +44,13 @@ export interface MdBlock {
   table?: MdTable;
 }
 
-function mkSpan(text: string, bold: boolean, italic: boolean, code: boolean, link: boolean, href: string): MdSpan {
-  const s: MdSpan = { text, bold, italic, code, link, href };
+function mkSpan(text: string, bold: boolean, italic: boolean, code: boolean, link: boolean, href: string, strike: boolean): MdSpan {
+  const s: MdSpan = { text, bold, italic, code, link, href, strike };
   return s;
 }
 
 function plainSpan(text: string): MdSpan {
-  return mkSpan(text, false, false, false, false, '');
+  return mkSpan(text, false, false, false, false, '', false);
 }
 
 /// Leading `N. ` ordered-list marker → index of the item text (after the marker),
@@ -168,7 +169,18 @@ export function parseInline(text: string): MdSpan[] {
           spans.push(plainSpan(plain));
           plain = '';
         }
-        spans.push(mkSpan(text.substring(i + 2, close), true, false, false, false, ''));
+        spans.push(mkSpan(text.substring(i + 2, close), true, false, false, false, '', false));
+        i = close + 2;
+        continue;
+      }
+    } else if (two === '~~') {
+      const close = text.indexOf('~~', i + 2);
+      if (close > i + 1) {
+        if (plain.length > 0) {
+          spans.push(plainSpan(plain));
+          plain = '';
+        }
+        spans.push(mkSpan(text.substring(i + 2, close), false, false, false, false, '', true));
         i = close + 2;
         continue;
       }
@@ -179,7 +191,7 @@ export function parseInline(text: string): MdSpan[] {
           spans.push(plainSpan(plain));
           plain = '';
         }
-        spans.push(mkSpan(text.substring(i + 1, close), false, false, true, false, ''));
+        spans.push(mkSpan(text.substring(i + 1, close), false, false, true, false, '', false));
         i = close + 1;
         continue;
       }
@@ -193,7 +205,7 @@ export function parseInline(text: string): MdSpan[] {
             plain = '';
           }
           // Capture the href so a `wiki:` link stays navigable (see MarkdownView).
-          spans.push(mkSpan(text.substring(i + 1, rb), false, false, false, true, text.substring(rb + 2, rp)));
+          spans.push(mkSpan(text.substring(i + 1, rb), false, false, false, true, text.substring(rb + 2, rp), false));
           i = rp + 1;
           continue;
         }
@@ -205,7 +217,7 @@ export function parseInline(text: string): MdSpan[] {
           spans.push(plainSpan(plain));
           plain = '';
         }
-        spans.push(mkSpan(text.substring(i + 1, close), false, true, false, false, ''));
+        spans.push(mkSpan(text.substring(i + 1, close), false, true, false, false, '', false));
         i = close + 1;
         continue;
       }
@@ -374,6 +386,18 @@ export struct MarkdownView {
     return s.link || s.code ? this.tk().accent : this.baseColor();
   }
 
+  /// Strikethrough wins over the wiki-link underline (a struck link is rare;
+  /// showing the strike is the honest read of `~~[x](wiki:…)~~`).
+  private spanDecoration(s: MdSpan): TextDecorationType {
+    if (s.strike) {
+      return TextDecorationType.LineThrough;
+    }
+    if (this.isWikiLink(s)) {
+      return TextDecorationType.Underline;
+    }
+    return TextDecorationType.None;
+  }
+
   private cellTextAlign(aligns: number[], idx: number): TextAlign {
     const a = idx < aligns.length ? aligns[idx] : -1;
     if (a === 0) {
@@ -393,6 +417,7 @@ export struct MarkdownView {
           .fontWeight(header || s.bold ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
           .fontColor(this.spanColor(s))
+          .decoration({ type: this.spanDecoration(s) })
       })
     }
     .layoutWeight(1)
@@ -444,6 +469,7 @@ export struct MarkdownView {
             .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
             .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
             .fontColor(this.spanColor(s))
+            .decoration({ type: this.spanDecoration(s) })
         })
       }
       .fontSize(this.mdFontSize)
@@ -475,7 +501,7 @@ export struct MarkdownView {
               .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
               .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
               .fontColor(this.spanColor(s))
-              .decoration({ type: this.isWikiLink(s) ? TextDecorationType.Underline : TextDecorationType.None })
+              .decoration({ type: this.spanDecoration(s) })
               .onClick(() => {
                 if (this.isWikiLink(s)) {
                   this.onWikiLink(s.href.substring(5));
@@ -495,7 +521,7 @@ export struct MarkdownView {
             .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
             .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
             .fontColor(this.spanColor(s))
-            .decoration({ type: this.isWikiLink(s) ? TextDecorationType.Underline : TextDecorationType.None })
+            .decoration({ type: this.spanDecoration(s) })
             .onClick(() => {
               if (this.isWikiLink(s)) {
                 this.onWikiLink(s.href.substring(5));
