@@ -25,7 +25,7 @@ export interface MdSpan {
   strike: boolean;
 }
 
-export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table' | 'quote';
+export type MdBlockKind = 'p' | 'h1' | 'h2' | 'h3' | 'code' | 'li-ul' | 'li-ol' | 'table' | 'quote' | 'li-task';
 
 /// A GFM pipe table. `aligns[c]` is the column alignment (-1 left / 0 centre /
 /// 1 right); `header` is the header row's cells, each a run of inline spans;
@@ -42,6 +42,21 @@ export interface MdBlock {
   code: string;
   ordinal: number;
   table?: MdTable;
+  checked?: boolean;
+}
+
+/// A `[ ]` / `[x]` task-list marker after a `- ` / `* ` bullet → checked state,
+/// or -1 when the line isn't a task item. Return value is the index where the
+/// item text starts (after the marker).
+function taskMarker(trimmed: string): number {
+  if (!trimmed.startsWith('- [') && !trimmed.startsWith('* [')) {
+    return -1;
+  }
+  const box = trimmed.charAt(3);
+  if ((box === ' ' || box === 'x' || box === 'X') && trimmed.charAt(4) === ']' && trimmed.charAt(5) === ' ') {
+    return 6;
+  }
+  return -1;
 }
 
 function mkSpan(text: string, bold: boolean, italic: boolean, code: boolean, link: boolean, href: string, strike: boolean): MdSpan {
@@ -319,6 +334,14 @@ export function parseBlocks(md: string): MdBlock[] {
       olCounter = 0;
       continue;
     }
+    const tm = taskMarker(trimmed);
+    if (tm >= 0) {
+      const checked = trimmed.charAt(3) === 'x' || trimmed.charAt(3) === 'X';
+      out.push({ kind: 'li-task', spans: parseInline(trimmed.substring(tm)), code: '', ordinal: 0, checked });
+      i++;
+      olCounter = 0;
+      continue;
+    }
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
       out.push({ kind: 'li-ul', spans: parseInline(trimmed.substring(2)), code: '', ordinal: 0 });
       i++;
@@ -490,6 +513,25 @@ export struct MarkdownView {
       .fontWeight(FontWeight.Bold)
       .fontColor(this.tk().text)
       .width('100%')
+    } else if (b.kind === 'li-task') {
+      Row({ space: 6 }) {
+        Text(b.checked ? '☑' : '☐')
+          .fontSize(this.mdFontSize)
+          .fontColor(b.checked ? this.tk().accent : this.baseColor())
+        Text() {
+          ForEach(b.spans, (s: MdSpan) => {
+            Span(s.text)
+              .fontWeight(s.bold ? FontWeight.Bold : FontWeight.Normal)
+              .fontStyle(s.italic ? FontStyle.Italic : FontStyle.Normal)
+              .fontColor(this.spanColor(s))
+              .decoration({ type: this.spanDecoration(s) })
+          })
+        }
+        .fontSize(this.mdFontSize)
+        .layoutWeight(1)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
     } else if (b.kind === 'li-ul' || b.kind === 'li-ol') {
       Row({ space: 6 }) {
         Text(b.kind === 'li-ol' ? `${b.ordinal}.` : '•')
