@@ -2,7 +2,8 @@ import { connection, webSocket } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
-import { deriveKeys, isSealed, openString, sealString, SealedBox } from './RelayCrypto';
+import { deriveKeys, isSealed, openBytes, openString, sealString, SealedBox } from './RelayCrypto';
+import { gunzip } from './Gzip';
 import { SessionInfo } from '../models/Types';
 
 /// Persistent WebSocket client for fleet-relay — the native ArkTS peer of
@@ -13,9 +14,9 @@ import { SessionInfo } from '../models/Types';
 ///
 /// Encryption is opaque here: every `msg` payload is a sealed `{enc:"box"}`
 /// envelope handled via RelayCrypto.sealString/openString. We advertise
-/// `supportsGzip:false`, so the desktop never gzips (it compresses only when
-/// EVERY live client opts in), and this client never needs to inflate — a gzip
-/// optimisation can come later without touching the wire contract.
+/// `supportsGzip` (once Gzip.gzipSelfTest passes), and inflate `z:true`
+/// payloads via Gzip.gunzip — the desktop compresses only when EVERY live
+/// client opts in, so this capability is what keeps the channel compressed.
 
 const DOMAIN = 0x0000;
 const TAG = 'fleet';
@@ -248,12 +249,28 @@ export class RelayClient {
   }
 
   /// Tear down the current socket (if any) and schedule a reconnect. Safe to
-  /// call from every failure path; onSocketClosed dedupes.
+  /// call from every failure path. Teardown runs UNCONDITIONALLY — the hello
+  /// interval and `authed` must die with the socket even when a retry is
+  /// already queued, or a stale hello fires on the next socket before its
+  /// `auth` frame and the relay kills the connection with "expected auth
+  /// frame" (which the app used to surface as 配对失败).
   private forceReconnect(reason: string): void {
     if (this.closed) {
       return;
     }
     hilog.warn(DOMAIN, TAG, 'relay reconnect (%{public}s)', reason);
+    const wasAuthed = this.authed;
+    this.teardownSocket();
+    this.scheduleReconnect(wasAuthed);
+  }
+
+  /// Kill the current socket + all per-connection state (hello timer, authed
+  /// flag, pending requests). Idempotent.
+  private teardownSocket(): void {
+    this.authed = false;
+    this.stopHello();
+    this.handlers.onStatus?.(false);
+    this.failPending('连接已断开');
     const ws = this.ws;
     this.ws = null;
     if (ws) {
@@ -263,7 +280,20 @@ export class RelayClient {
         // already dead
       }
     }
-    this.onSocketClosed();
+  }
+
+  /// Queue a single retry (multiple failure paths may fire for one death).
+  private scheduleReconnect(wasAuthed: boolean): void {
+    if (this.closed || this.reconnectPending) {
+      return;
+    }
+    const delay = wasAuthed ? 1000 : this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_MS);
+    this.reconnectPending = true;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectPending = false;
+      this.open();
+    }, delay);
   }
 
   close(): void {
@@ -339,6 +369,9 @@ export class RelayClient {
       });
 
       ws.on('message', (_err: BusinessError, value: string | ArrayBuffer) => {
+        if (this.ws !== ws) {
+          return; // stale socket already replaced
+        }
         if (typeof value !== 'string') {
           return;
         }
@@ -352,10 +385,16 @@ export class RelayClient {
       });
 
       ws.on('close', (_err: BusinessError, _value: Object) => {
+        if (this.ws !== ws) {
+          return; // stale socket already replaced
+        }
         this.onSocketClosed();
       });
 
       ws.on('error', (err: BusinessError) => {
+        if (this.ws !== ws) {
+          return; // stale socket already replaced
+        }
         // OHOS may deliver only 'error' (no 'close') for a failed socket, so
         // closing and waiting for the close event is not enough — reconnect.
         hilog.warn(DOMAIN, TAG, 'ws error: %{public}s', JSON.stringify(err));
@@ -372,25 +411,9 @@ export class RelayClient {
   }
 
   private onSocketClosed(): void {
-    if (this.reconnectPending) {
-      return; // a retry is already scheduled for this dead socket
-    }
     const wasAuthed = this.authed;
-    this.authed = false;
-    this.stopHello();
-    this.handlers.onStatus?.(false);
-    this.failPending('连接已断开');
-    this.ws = null;
-    if (this.closed) {
-      return;
-    }
-    const delay = wasAuthed ? 1000 : this.reconnectDelay;
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_MS);
-    this.reconnectPending = true;
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectPending = false;
-      this.open();
-    }, delay);
+    this.teardownSocket();
+    this.scheduleReconnect(wasAuthed);
   }
 
   private handleFrame(frame: InboundFrame): void {
@@ -427,17 +450,19 @@ export class RelayClient {
     if (!isSealed(payload.enc, iv, ct) || iv === undefined || ct === undefined) {
       return;
     }
-    if (payload.z === true) {
-      // We advertise supportsGzip:false, so the desktop should never gzip.
-      hilog.warn(DOMAIN, TAG, 'dropping unexpected gzipped payload (z:true)');
-      return;
-    }
     const ek = this.encKey;
     if (!ek) {
       return;
     }
     const sealed: SealedBox = { enc: 'box', iv, ct };
-    openString(ek, sealed)
+    // z:true marks a payload gzipped before sealing (we advertise supportsGzip
+    // once Gzip.gzipSelfTest passes) — open to bytes, inflate, then parse.
+    const jsonPromise: Promise<string> = payload.z === true
+      ? openBytes(ek, sealed)
+        .then((bytes: Uint8Array) => gunzip(bytes))
+        .then((plain: Uint8Array) => util.TextDecoder.create('utf-8').decodeToString(plain))
+      : openString(ek, sealed);
+    jsonPromise
       .then((json: string) => {
         let biz: BusinessPayload;
         try {
@@ -447,8 +472,11 @@ export class RelayClient {
         }
         this.handlePayload(biz);
       })
-      .catch((_e: Object) => {
-        // bad key / tampered / malformed — drop the frame
+      .catch((e: Object) => {
+        // bad key / tampered / malformed / inflate failure — drop the frame
+        if (payload.z === true) {
+          hilog.warn(DOMAIN, TAG, 'gzipped frame dropped: %{public}s', JSON.stringify(e));
+        }
       });
   }
 
@@ -497,8 +525,8 @@ export class RelayClient {
   /// Seal a business payload (a JSON string) and send it as a `msg` frame.
   private async sealAndSend(payloadJson: string): Promise<void> {
     const ws = this.ws;
-    if (!ws) {
-      return;
+    if (!ws || !this.authed) {
+      return; // pre-auth frames would be a relay protocol violation
     }
     await this.ensureKeys();
     const ek = this.encKey;
@@ -536,7 +564,7 @@ export class RelayClient {
     this.reqSeq += 1;
     const reqId = `${this.reqPrefix}-${this.reqSeq}`;
     return new Promise<T>((resolve: (v: T) => void, reject: (e: Object) => void) => {
-      if (!this.ws) {
+      if (!this.ws || !this.authed) {
         reject(new RelayRequestError('尚未连接 relay', false));
         return;
       }
