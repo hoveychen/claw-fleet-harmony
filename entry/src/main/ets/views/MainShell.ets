@@ -437,13 +437,23 @@ export struct MainShell {
     .border({ width: { bottom: 1 }, color: this.tk().border })
   }
 
+  /// Unread-count badge for a tab. Reads the live @State *inside* the builder's
+  /// render scope (via this helper) so ArkUI subscribes to it — passing a
+  /// precomputed count by value into the @Builder would NOT re-render the badge
+  /// when `decisions` changes (it would freeze at the mount-time value of 0, so
+  /// arriving cards never bump the count). Mirrors MoreView.segButton's
+  /// `segActive` / TasksView.segButton's `this.markFilter === key`.
+  private badgeFor(key: string): number {
+    return key === 'decisions' ? this.decisions.length : 0;
+  }
+
   @Builder
-  tabItem(key: string, icon: Resource, label: string, badge: number) {
+  tabItem(key: string, icon: Resource, label: string) {
     Column({ space: 2 }) {
       Stack({ alignContent: Alignment.TopEnd }) {
         Icon({ src: icon, iconSize: 20, color: this.tab === key ? this.tk().accent : this.tk().textDim })
-        if (badge > 0) {
-          Text(badge > 99 ? '99+' : `${badge}`)
+        if (this.badgeFor(key) > 0) {
+          Text(this.badgeFor(key) > 99 ? '99+' : `${this.badgeFor(key)}`)
             .fontSize(9)
             .fontColor('#ffffff')
             .backgroundColor(this.tk().accent)
@@ -496,11 +506,11 @@ export struct MainShell {
   @Builder
   bottomBar() {
     Row() {
-      this.tabItem('decisions', $r('app.media.ic_inbox'), t('决策'), this.decisions.length)
-      this.tabItem('tasks', $r('app.media.ic_list_checks'), t('任务'), 0)
+      this.tabItem('decisions', $r('app.media.ic_inbox'), t('决策'))
+      this.tabItem('tasks', $r('app.media.ic_list_checks'), t('任务'))
       this.fab()
-      this.tabItem('wiki', $r('app.media.ic_book_open'), t('知识库'), 0)
-      this.tabItem('more', $r('app.media.ic_ellipsis'), t('更多'), 0)
+      this.tabItem('wiki', $r('app.media.ic_book_open'), t('知识库'))
+      this.tabItem('more', $r('app.media.ic_ellipsis'), t('更多'))
     }
     .width('100%')
     .height(60 + this.safeBottom)
