@@ -130,11 +130,11 @@ export struct DirPicker {
               })
             }
             if (this.data !== null) {
-              ForEach(this.data.entries, (e: BrowseEntry) => {
+              ForEach(this.data.entries ?? [], (e: BrowseEntry) => {
                 this.rowItem(e.isGitRepo ? $r('app.media.ic_folder_git_2') : $r('app.media.ic_folder'), e.name, () => this.load(e.path))
               }, (e: BrowseEntry) => e.path)
             }
-            if (this.data !== null && !this.loading && this.data.entries.length === 0) {
+            if (this.data !== null && !this.loading && (this.data.entries ?? []).length === 0) {
               Text(t('这里没有子目录'))
                 .fontSize(13)
                 .fontColor(this.tk().textDim)
