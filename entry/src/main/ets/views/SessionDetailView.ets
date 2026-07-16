@@ -419,6 +419,16 @@ export struct SessionDetailView {
     if (input === undefined) {
       return '';
     }
+    // Bash/Agent carry a model-written `description` — a readable summary that
+    // beats Bash's raw command (often a long escaped grep) and Agent's absent
+    // compact field. Mirrors the desktop cards and mobile-web. Fall back to the
+    // field list when no description was recorded (older transcripts).
+    if (b.name === 'Bash' || b.name === 'Agent') {
+      const desc = input['description'];
+      if (typeof desc === 'string' && (desc as string).trim().length > 0) {
+        return (desc as string).trim();
+      }
+    }
     for (const field of TOOL_SUMMARY_FIELDS) {
       const v = input[field];
       if (typeof v === 'string' && (v as string).length > 0) {
