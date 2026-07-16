@@ -367,6 +367,12 @@ function isUserInput(msg: RawMessage, toolNameById: Map<string, string>): boolea
   }
   for (const b of blocks) {
     if (b.type === 'tool_result' && b.tool_use_id !== undefined) {
+      // A failed ask call (is_error) was never actually answered — it errored
+      // out before the user could respond, so it is NOT user input and must not
+      // end the narration span.
+      if (b.is_error === true) {
+        continue;
+      }
       const name = toolNameById.get(b.tool_use_id);
       if (name !== undefined && isAskTool(name)) {
         return true;

@@ -328,6 +328,9 @@ export interface ContentBlock {
   content?: Object;
   id?: string;
   tool_use_id?: string;
+  /// true when a tool_result is an error (e.g. a failed/cancelled ask card the
+  /// user never actually answered).
+  is_error?: boolean;
 }
 
 /// The nested `message` object of a RawMessage (extracted from an anonymous type).
