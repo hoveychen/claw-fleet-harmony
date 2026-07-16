@@ -31,6 +31,7 @@ import {
   taskBasename,
 } from '../common/TaskNotification';
 import { SessionInfo, SessionStatus, RawMessage, ContentBlock, LiveThinking } from '../models/Types';
+import { SkillInjection, parseSkillInjection } from '../common/SkillInjection';
 import { ResumeComposer } from './Composer';
 import { Icon } from '../common/Icon';
 import { CopyButton } from '../common/CopyButton';
@@ -390,6 +391,29 @@ export struct SessionDetailView {
     return txt.includes('<task-notification>') && parseTaskNotification(txt) !== null;
   }
 
+  /// A skill-body injection: an `isMeta` user turn whose text is the whole
+  /// SKILL.md the harness fed the agent — not a user turn. Folded into a card.
+  private skillOf(msg: RawMessage): SkillInjection | null {
+    if (msg.isMeta !== true) {
+      return null;
+    }
+    return parseSkillInjection(this.userText(msg));
+  }
+
+  private isSkillInject(msg: RawMessage): boolean {
+    return this.skillOf(msg) !== null;
+  }
+
+  private skillSlug(msg: RawMessage): string {
+    const s = this.skillOf(msg);
+    return s !== null ? s.slug : '';
+  }
+
+  private skillBody(msg: RawMessage): string {
+    const s = this.skillOf(msg);
+    return s !== null ? s.body : '';
+  }
+
   private toolSummary(b: ContentBlock): string {
     const input = b.input;
     if (input === undefined) {
@@ -608,7 +632,9 @@ export struct SessionDetailView {
   messageRow(msg: RawMessage, index: number) {
     if (msg.type === 'user') {
       if (this.userText(msg).length > 0) {
-        if (this.isNotif(msg)) {
+        if (this.isSkillInject(msg)) {
+          SkillLoadCard({ slug: this.skillSlug(msg), body: this.skillBody(msg) })
+        } else if (this.isNotif(msg)) {
           TaskNotificationCard({ text: this.userText(msg) })
         } else {
           this.userRow(msg)
@@ -853,6 +879,54 @@ struct TaskNotificationCard {
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .width('100%')
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding(12)
+    .borderRadius(10)
+    .backgroundColor(this.tk().bgCard)
+    .border({ width: 1, color: this.tk().border })
+    .margin({ top: 6, bottom: 6 })
+  }
+}
+
+/// The SKILL.md body Claude Code injects on a skill load, folded into a
+/// collapsed card — the harness feeding the agent, not a user turn. Mirrors the
+/// desktop SkillLoadBlock / mobile-web SkillLoadCard.
+@Component
+struct SkillLoadCard {
+  @StorageProp('resolvedTheme') resolvedTheme: string = 'dark';
+  @StorageProp('lang') lang: string = 'zh';
+  @Prop slug: string = '';
+  @Prop body: string = '';
+  @State private open: boolean = false;
+
+  private tk(): ColorTokens {
+    return themeTokens(this.resolvedTheme);
+  }
+
+  build() {
+    Column({ space: 6 }) {
+      Row({ space: 6 }) {
+        Icon({ src: $r('app.media.ic_book_open'), iconSize: 14, color: this.tk().accent })
+        Text(t('已加载 SKILL'))
+          .fontSize(11).fontColor(this.tk().textDim)
+        Text(this.slug)
+          .fontSize(12).fontColor(this.tk().accent).fontWeight(FontWeight.Medium)
+          .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        Icon({
+          src: this.open ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
+          iconSize: 14,
+          color: this.tk().textDim,
+        })
+      }
+      .width('100%')
+      .onClick(() => {
+        this.open = !this.open;
+      })
+      if (this.open) {
+        MarkdownView({ content: this.body, mdFontSize: 13 })
       }
     }
     .width('100%')

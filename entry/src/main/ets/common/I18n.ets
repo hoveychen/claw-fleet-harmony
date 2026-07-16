@@ -46,6 +46,7 @@ export function t(zh: string, ...args: (string | number)[]): string {
 
 const ENTRIES: [string, string][] = [
   ['其他', 'Other'],
+  ['已加载 SKILL', 'SKILL LOADED'],
   // ── App shell / 配对 gate ──
   ['Fleet 移动端', 'Fleet Mobile'],
   ['请在桌面端 Fleet 的「移动端」板块扫码打开本页面（链接里带配对密钥）。',
