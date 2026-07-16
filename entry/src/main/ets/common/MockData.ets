@@ -399,11 +399,23 @@ export function mockRepoDetail(): RepoDetail {
     unpushed: 2,
     behind: 0,
     dirtyCount: 3,
+    dirtyFiles: [
+      { path: 'entry/src/main/ets/views/RepoDetailView.ets', status: 'M' },
+      { path: 'entry/src/main/ets/models/Types.ets', status: 'M' },
+      { path: 'notes/scratch.md', status: '?' },
+    ],
     worktrees: [{
       path: '.worktrees/trial-mock-mode',
       branch: 'prd/trial-mock-mode',
       unmerged: 0,
       dirtyCount: 5,
+      dirtyFiles: [
+        { path: 'src/App.tsx', status: 'M' },
+        { path: 'src/relay.ts', status: 'M' },
+        { path: 'src/views/TrialView.tsx', status: 'A' },
+        { path: 'src/trial.css', status: 'A' },
+        { path: 'tmp/debug.log', status: '?' },
+      ],
       lastCommitSummary: 'feat: 免扫码试用模式',
       lastCommitTime: now - 10 * MIN,
     }],
