@@ -532,6 +532,13 @@ export interface WikiExportPayload {
 
 // ── Repository "仓库" surface (git_ops) ───────────────────────────────────────
 
+export interface DirtyFile {
+  path: string;
+  // One-char status: M modified, A staged-add, D deleted, R renamed, T
+  // typechange, ? untracked, U conflict.
+  status: string;
+}
+
 export interface RepoSummary {
   root: string;
   label: string;
@@ -550,6 +557,7 @@ export interface WorktreeHealth {
   branch: string | null;
   unmerged: number;
   dirtyCount: number;
+  dirtyFiles: DirtyFile[];
   lastCommitSummary: string | null;
   lastCommitTime: number | null;
 }
@@ -569,6 +577,7 @@ export interface RepoDetail {
   unpushed: number | null;
   behind: number | null;
   dirtyCount: number;
+  dirtyFiles: DirtyFile[];
   worktrees: WorktreeHealth[];
   commits: CommitInfo[];
 }

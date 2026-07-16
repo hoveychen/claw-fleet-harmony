@@ -2,7 +2,7 @@ import { t, dateLocale } from '../common/I18n';
 import { ColorTokens, themeTokens } from '../common/Theme';
 import { pushBackLayer, dropBackLayer } from '../common/BackStack';
 import { RelayClient } from '../common/Relay';
-import { RepoSummary, RepoDetail, WorktreeHealth, CommitInfo, GitOpResult } from '../models/Types';
+import { RepoSummary, RepoDetail, WorktreeHealth, CommitInfo, GitOpResult, DirtyFile } from '../models/Types';
 import { Icon } from '../common/Icon';
 import { CAPSULE_INSET_RIGHT, HEADER_HEIGHT } from '../common/SafeArea';
 
@@ -43,10 +43,43 @@ export struct RepoDetailView {
   @State private error: string = '';
   @State private busy: string = ''; // '' | 'push' | 'pull'
   @State private opResult: GitOpResult | null = null;
+  // Whether the main checkout's "脏 N" badge is expanded into its file list.
+  @State private showMainFiles: boolean = false;
+  // Worktree paths whose "脏 N" badge is expanded (mobile has no file tree, so
+  // the list is read-only — display-only, no reveal).
+  @State private expandedWts: string[] = [];
   private backLayerId: number = -1;
 
   private tk(): ColorTokens {
     return themeTokens(this.resolvedTheme);
+  }
+
+  private isWtExpanded(path: string): boolean {
+    return this.expandedWts.includes(path);
+  }
+
+  private toggleWt(path: string): void {
+    this.expandedWts = this.expandedWts.includes(path)
+      ? this.expandedWts.filter((x: string) => x !== path)
+      : [...this.expandedWts, path];
+  }
+
+  /// One-char git status code → a token colour (matches the desktop 文件 tab).
+  private statusColor(status: string): ResourceColor {
+    const tk = this.tk();
+    if (status === 'A') {
+      return tk.success;
+    }
+    if (status === 'D' || status === 'U') {
+      return tk.error;
+    }
+    if (status === 'M' || status === 'T') {
+      return tk.warning;
+    }
+    if (status === 'R') {
+      return tk.accent;
+    }
+    return tk.textDim;
   }
 
   aboutToAppear(): void {
@@ -75,6 +108,10 @@ export struct RepoDetailView {
         // TypeError: Cannot read property length of undefined).
         d.worktrees = d.worktrees ?? [];
         d.commits = d.commits ?? [];
+        d.dirtyFiles = d.dirtyFiles ?? [];
+        for (const w of d.worktrees) {
+          w.dirtyFiles = w.dirtyFiles ?? [];
+        }
         this.detail = d;
       })
       .catch((e: Object) => {
@@ -171,6 +208,75 @@ export struct RepoDetailView {
       .margin({ left: 6 })
   }
 
+  /// Clickable "脏 N" chip for the main checkout — toggles the file list.
+  @Builder
+  dirtyChipMain(count: number) {
+    Row() {
+      Text(t('脏 {0}', count)).fontSize(11).fontColor(this.tk().textSecondary)
+      Icon({
+        src: this.showMainFiles ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
+        iconSize: 12,
+        color: this.tk().textSecondary,
+      })
+    }
+    .backgroundColor(this.tk().bgInput)
+    .padding({ left: 7, right: 4, top: 2, bottom: 2 })
+    .borderRadius(6)
+    .margin({ left: 6 })
+    .onClick(() => {
+      this.showMainFiles = !this.showMainFiles;
+    })
+  }
+
+  /// Clickable "脏 N" chip for one worktree — toggles that worktree's file list.
+  @Builder
+  dirtyChipWt(w: WorktreeHealth) {
+    Row() {
+      Text(t('脏 {0}', w.dirtyCount)).fontSize(11).fontColor(this.tk().textSecondary)
+      Icon({
+        src: this.isWtExpanded(w.path) ? $r('app.media.ic_chevron_down') : $r('app.media.ic_chevron_right'),
+        iconSize: 12,
+        color: this.tk().textSecondary,
+      })
+    }
+    .backgroundColor(this.tk().bgInput)
+    .padding({ left: 7, right: 4, top: 2, bottom: 2 })
+    .borderRadius(6)
+    .margin({ left: 6 })
+    .onClick(() => this.toggleWt(w.path))
+  }
+
+  /// Read-only uncommitted-file list (path + one-char status colour).
+  @Builder
+  dirtyFileList(files: DirtyFile[]) {
+    Column({ space: 2 }) {
+      ForEach(files, (f: DirtyFile) => {
+        Row({ space: 8 }) {
+          Text(f.status)
+            .fontSize(11)
+            .fontFamily('monospace')
+            .fontWeight(700)
+            .fontColor(this.statusColor(f.status))
+            .width(14)
+            .textAlign(TextAlign.Center)
+          Text(f.path)
+            .fontSize(11)
+            .fontFamily('monospace')
+            .fontColor(this.tk().textSecondary)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+        }
+        .width('100%')
+      }, (f: DirtyFile) => f.path)
+    }
+    .width('100%')
+    .padding({ left: 6, right: 6, top: 6, bottom: 6 })
+    .margin({ top: 6 })
+    .borderRadius(8)
+    .backgroundColor(this.tk().bgInput)
+  }
+
   @Builder
   branchCard(d: RepoDetail) {
     Column() {
@@ -187,7 +293,7 @@ export struct RepoDetailView {
           this.chip(t('未推 {0}', d.unpushed ?? 0), (d.unpushed ?? 0) > 0 ? 'warn' : 'muted')
           this.chip(t('落后 {0}', d.behind ?? 0), (d.behind ?? 0) > 0 ? 'info' : 'muted')
           if (d.dirtyCount > 0) {
-            this.chip(t('脏 {0}', d.dirtyCount), 'info')
+            this.dirtyChipMain(d.dirtyCount)
           }
           if ((d.unpushed ?? 0) === 0 && (d.behind ?? 0) === 0 && d.dirtyCount === 0) {
             this.chip(t('干净'), 'ok')
@@ -249,7 +355,7 @@ export struct RepoDetailView {
             this.chip(t('未合并 {0}', w.unmerged), 'warn')
           }
           if (w.dirtyCount > 0) {
-            this.chip(t('脏 {0}', w.dirtyCount), 'info')
+            this.dirtyChipWt(w)
           }
           if (w.unmerged === 0 && w.dirtyCount === 0) {
             this.chip(t('已合并'), 'ok')
@@ -257,6 +363,9 @@ export struct RepoDetailView {
           if (fmtTime(w.lastCommitTime).length > 0) {
             Text(fmtTime(w.lastCommitTime)).fontSize(11).fontColor(this.tk().textDim).margin({ left: 4 })
           }
+        }
+        if (this.isWtExpanded(w.path) && w.dirtyCount > 0) {
+          this.dirtyFileList(w.dirtyFiles)
         }
       }
       .alignItems(HorizontalAlign.Start)
@@ -301,6 +410,9 @@ export struct RepoDetailView {
           } else {
             this.sectionLabel(t('当前分支'))
             this.branchCard(this.detail)
+            if (this.showMainFiles && this.detail.dirtyCount > 0) {
+              this.dirtyFileList(this.detail.dirtyFiles)
+            }
             this.opButtons()
             if (this.opResult !== null) {
               Text(this.opResult.output.length > 0 ? this.opResult.output : (this.opResult.ok ? t('完成') : t('失败')))
