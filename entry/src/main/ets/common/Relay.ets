@@ -366,6 +366,12 @@ export class RelayClient {
       this.authed = false;
       this.attemptSeq += 1;
       const seq = this.attemptSeq;
+      // Diagnostic (2026-07-16): log which network bearer(s) this socket will use
+      // to settle whether the atomic service's traffic rides an active VPN or
+      // bypasses it (裸连). The browser (mobile-web) has no equivalent probe —
+      // interpret by comparing relay connect latency against a browser on the
+      // same phone. `*` marks the default net the socket actually binds to.
+      this.logNetBearer(seq);
       // Watchdog: if this attempt neither auths nor dies within the window,
       // tear it down and retry (see CONNECT_ATTEMPT_TIMEOUT_MS above).
       setTimeout(() => {
@@ -426,6 +432,29 @@ export class RelayClient {
     const wasAuthed = this.authed;
     this.teardownSocket();
     this.scheduleReconnect(wasAuthed);
+  }
+
+  /// Diagnostic probe: log the bearer type(s) of the DEFAULT net this socket
+  /// binds to (WIFI / CELLULAR / VPN / …). `getAllNets` and the `BEARER_VPN`
+  /// symbol are both @atomicservice-restricted (build error 11706010), so we can
+  /// only inspect the default net and must recognise a VPN bearer by its numeric
+  /// value (4). The restriction is itself telling: an atomic service is denied
+  /// the API to even enumerate a system VPN's nets. If a VPN is active on the
+  /// phone yet this logs WIFI/CELLULAR (never VPN), the atomic service's traffic
+  /// is bypassing the tunnel — which is what the mobile-web browser gets for free.
+  private logNetBearer(seq: number): void {
+    connection.getDefaultNet().then((def: connection.NetHandle) => {
+      connection.getNetCapabilities(def).then((cap: connection.NetCapabilities) => {
+        const types: connection.NetBearType[] = cap.bearerTypes ?? [];
+        const bearers = types.map((b: connection.NetBearType) => bearerName(b)).join('+');
+        hilog.info(DOMAIN, TAG, 'net probe #%{public}d: default netId=%{public}d bearers=[%{public}s]',
+          seq, def.netId, bearers.length > 0 ? bearers : '?');
+      }).catch((e: Object) => {
+        hilog.warn(DOMAIN, TAG, 'net probe caps failed: %{public}s', JSON.stringify(e));
+      });
+    }).catch((e: Object) => {
+      hilog.warn(DOMAIN, TAG, 'net probe getDefaultNet failed: %{public}s', JSON.stringify(e));
+    });
   }
 
   private handleFrame(frame: InboundFrame): void {
@@ -657,6 +686,22 @@ interface ReqPayload {
   req_id: string;
   method: string;
   params: Object;
+}
+
+/// Human-readable name for a NetBearType, for the network diagnostic probe.
+function bearerName(b: connection.NetBearType): string {
+  switch (b) {
+    case connection.NetBearType.BEARER_CELLULAR:
+      return 'CELLULAR';
+    case connection.NetBearType.BEARER_WIFI:
+      return 'WIFI';
+    case connection.NetBearType.BEARER_ETHERNET:
+      return 'ETHERNET';
+    default:
+      // BEARER_VPN (4) is an @atomicservice-restricted symbol, so match its
+      // numeric value instead of the enum name to still label a VPN bearer.
+      return (b as number) === 4 ? 'VPN' : `#${b}`;
+  }
 }
 
 function helloPayload(info: DeviceInfo): string {
